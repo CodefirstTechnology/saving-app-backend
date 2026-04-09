@@ -31,26 +31,50 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 const prefix = env.apiPrefix;
 
-async function start() {
-  try {
-    await connectDb();
+/**
+ * Vercel/serverless: the exported `app` must register routes at load time. The old pattern
+ * (`start()` awaited MongoDB then mounted routes) meant the first requests often hit an app
+ * with no `/api/v1` routes → Express "Cannot GET /api/v1/..." 404s.
+ */
+const limiters = await buildApiRateLimiters();
+
+const mongoPromise = connectDb()
+  .then(() => {
     logger.info('MongoDB connection established');
-  } catch (e) {
+  })
+  .catch((e) => {
     logger.error('Unable to connect to database', e.message);
+    throw e;
+  });
+
+async function ensureMongo(req, res, next) {
+  try {
+    await mongoPromise;
+    next();
+  } catch (e) {
+    next(e);
+  }
+}
+
+app.use(prefix, ensureMongo, limiters.globalLimiter, optionalRequestSigning, createV1Router(limiters));
+
+app.use(notFoundHandler);
+app.use(errorHandler);
+
+async function startServer() {
+  if (process.env.VERCEL) {
+    return;
+  }
+  try {
+    await mongoPromise;
+  } catch (e) {
     process.exit(1);
   }
-
-  const limiters = await buildApiRateLimiters();
-  app.use(prefix, limiters.globalLimiter, optionalRequestSigning, createV1Router(limiters));
-
-  app.use(notFoundHandler);
-  app.use(errorHandler);
-
   app.listen(env.port, () => {
     logger.info(`API listening on port ${env.port} ${prefix}`);
   });
 }
 
-start();
+startServer();
 
 export default app;

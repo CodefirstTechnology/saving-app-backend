@@ -15,10 +15,10 @@ export function optionalRequestSigning(req, res, next) {
   const p = req.path || '';
   if (p.endsWith('/health')) return next();
   if (
-    p.endsWith('/auth/bootstrap') ||
-    p.endsWith('/auth/login') ||
-    p.endsWith('/auth/refresh') ||
-    p.endsWith('/auth/register-admin')
+    p.includes('/auth/bootstrap') ||
+    p.includes('/auth/login') ||
+    p.includes('/auth/refresh') ||
+    p.includes('/auth/register-admin')
   ) {
     return next();
   }
