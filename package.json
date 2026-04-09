@@ -1,0 +1,36 @@
+{
+  "name": "bachat-pragati-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node -e \"console.log('build: no compile step (plain JS)')\"",
+    "start": "node src/app.js",
+    "dev": "node --watch src/app.js",
+    "db:migrate": "sequelize-cli db:migrate",
+    "db:migrate:undo": "sequelize-cli db:migrate:undo",
+    "db:seed": "sequelize-cli db:seed:all",
+    "db:seed:undo": "sequelize-cli db:seed:undo:all",
+    "add:member-user": "node scripts/add-member-user.mjs",
+    "create-super-admin": "node scripts/create-super-admin.mjs"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^8.3.1",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^2.1.1",
+    "mysql2": "^3.20.0",
+    "rate-limit-redis": "^4.3.1",
+    "redis": "^5.11.0",
+    "sequelize": "^6.37.3",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "sequelize-cli": "^6.6.2"
+  }
+}
