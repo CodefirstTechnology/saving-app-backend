@@ -31,6 +31,19 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 const prefix = env.apiPrefix;
 
+/** Browsers hit `/` and `/favicon.ico` — API lives under `prefix`; this avoids a confusing JSON 404. */
+app.get('/', (_req, res) => {
+  const base = prefix.replace(/\/$/, '');
+  res.json({
+    success: true,
+    data: {
+      service: 'bachat-pragati-api',
+      health: `${base}/health`,
+      hint: 'Use the mobile app with EXPO_PUBLIC_API_URL ending in /api/v1 (or open /api/v1/health).',
+    },
+  });
+});
+
 /**
  * Vercel/serverless: the exported `app` must register routes at load time. The old pattern
  * (`start()` awaited MongoDB then mounted routes) meant the first requests often hit an app
