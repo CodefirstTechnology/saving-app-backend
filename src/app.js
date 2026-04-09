@@ -38,22 +38,24 @@ const prefix = env.apiPrefix;
  */
 const limiters = await buildApiRateLimiters();
 
-const mongoPromise = connectDb()
+/** Resolved when the first connect attempt finishes; never rejects (avoids UnhandledRejection / Vercel exit 1). */
+let mongoConnectError = null;
+const mongoReady = connectDb()
   .then(() => {
     logger.info('MongoDB connection established');
+    mongoConnectError = null;
   })
   .catch((e) => {
+    mongoConnectError = e;
     logger.error('Unable to connect to database', e.message);
-    throw e;
   });
 
 async function ensureMongo(req, res, next) {
-  try {
-    await mongoPromise;
-    next();
-  } catch (e) {
-    next(e);
+  await mongoReady;
+  if (mongoConnectError) {
+    return next(mongoConnectError);
   }
+  next();
 }
 
 app.use(prefix, ensureMongo, limiters.globalLimiter, optionalRequestSigning, createV1Router(limiters));
@@ -65,9 +67,8 @@ async function startServer() {
   if (process.env.VERCEL) {
     return;
   }
-  try {
-    await mongoPromise;
-  } catch (e) {
+  await mongoReady;
+  if (mongoConnectError) {
     process.exit(1);
   }
   app.listen(env.port, () => {

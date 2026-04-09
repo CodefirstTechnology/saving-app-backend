@@ -12,7 +12,11 @@ export async function connectDb() {
     throw new Error('MONGODB_URI is required (e.g. MongoDB Atlas connection string)');
   }
   mongoose.set('strictQuery', true);
-  await mongoose.connect(uri);
+  /** Atlas + Vercel/serverless: allow 0.0.0.0/0 in Atlas → Network Access (Vercel has no fixed egress IP). */
+  await mongoose.connect(uri, {
+    serverSelectionTimeoutMS: 15_000,
+    socketTimeoutMS: 45_000,
+  });
 }
 
 export async function disconnectDb() {
