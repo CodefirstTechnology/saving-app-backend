@@ -1,5 +1,5 @@
 import { addMonths, formatISO } from '../utils/date.js';
-import { sequelize } from '../models/index.js';
+import { withMongoTransaction } from '../config/database.js';
 import loanRepository from '../repositories/loanRepository.js';
 import loanVoteRepository from '../repositories/loanVoteRepository.js';
 import groupRepository from '../repositories/groupRepository.js';
@@ -456,8 +456,7 @@ const loanService = {
 
     const nextDue = addMonths(issuedAt, 1);
 
-    const t = await sequelize.transaction();
-    try {
+    await withMongoTransaction(async (session) => {
       await loanRepository.update(
         loan,
         {
@@ -467,7 +466,7 @@ const loanService = {
           due_at: dueAt,
           next_due_date: nextDue,
         },
-        { transaction: t }
+        { session }
       );
       await transactionRepository.create(
         {
@@ -483,13 +482,9 @@ const loanService = {
           occurred_at: issuedAt,
           created_by_user_id: user.id,
         },
-        { transaction: t }
+        { session }
       );
-      await t.commit();
-    } catch (e) {
-      await t.rollback();
-      throw e;
-    }
+    });
 
     const after = await loanRepository.findById(loanId, groupId);
     const borrower = await userRepository.findByMemberId(loan.member_id);
@@ -566,9 +561,9 @@ const loanService = {
     const dueAt = body.dueAt || addMonths(issuedAt, termMonths);
     const { emi } = computeEmiBreakdown(principal, interestRate, termMonths);
     const nextDue = addMonths(issuedAt, 1);
-    const t = await sequelize.transaction();
-    try {
-      const loan = await loanRepository.create(
+    let loan;
+    await withMongoTransaction(async (session) => {
+      loan = await loanRepository.create(
         {
           group_id: groupId,
           member_id: member.id,
@@ -587,7 +582,7 @@ const loanService = {
           next_due_date: nextDue,
           reject_reason: null,
         },
-        { transaction: t }
+        { session }
       );
       await transactionRepository.create(
         {
@@ -603,14 +598,10 @@ const loanService = {
           occurred_at: issuedAt,
           created_by_user_id: user.id,
         },
-        { transaction: t }
+        { session }
       );
-      await t.commit();
-      return serializeLoan(await loanRepository.findById(loan.id, groupId), { skipCharts: true });
-    } catch (e) {
-      await t.rollback();
-      throw e;
-    }
+    });
+    return serializeLoan(await loanRepository.findById(loan.id, groupId), { skipCharts: true });
   },
 
   async repay(user, body, groupId) {
@@ -632,8 +623,7 @@ const loanService = {
     } else if (newStatus === 'paid') {
       nextDue = null;
     }
-    const t = await sequelize.transaction();
-    try {
+    await withMongoTransaction(async (session) => {
       await transactionRepository.create(
         {
           group_id: groupId,
@@ -648,7 +638,7 @@ const loanService = {
           occurred_at: body.occurredAt || formatISO(new Date(), 'date'),
           created_by_user_id: user.id,
         },
-        { transaction: t }
+        { session }
       );
       await loanRepository.update(
         loan,
@@ -658,13 +648,9 @@ const loanService = {
           installments_paid: installmentsPaid,
           next_due_date: nextDue,
         },
-        { transaction: t }
+        { session }
       );
-      await t.commit();
-    } catch (e) {
-      await t.rollback();
-      throw e;
-    }
+    });
 
     const after = await loanRepository.findById(loan.id, groupId);
     const borrower = await userRepository.findByMemberId(loan.member_id);

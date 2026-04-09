@@ -1,81 +1,73 @@
-import { Op } from 'sequelize';
-import sequelize from '../config/database.js';
 import { Member } from '../models/index.js';
+
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 const memberRepository = {
   async findById(id, groupId) {
-    const where = { id };
-    if (groupId) where.group_id = groupId;
-    return Member.findOne({ where });
+    const q = { _id: id };
+    if (groupId) q.group_id = groupId;
+    return Member.findOne(q);
   },
   async create(data, options = {}) {
-    return Member.create(data, options);
+    const opts = options.session ? { session: options.session } : {};
+    return Member.create(data, opts);
   },
   async update(id, groupId, data, options = {}) {
     const m = await this.findById(id, groupId);
     if (!m) return null;
-    await m.update(data, options);
+    Object.assign(m, data);
+    const saveOpts = options.session ? { session: options.session } : {};
+    await m.save(saveOpts);
     return m;
   },
-  async delete(id, groupId) {
+  async delete(id, groupId, options = {}) {
     const m = await this.findById(id, groupId);
     if (!m) return false;
-    await m.destroy();
+    const delOpts = options.session ? { session: options.session } : {};
+    await m.deleteOne(delOpts);
     return true;
   },
   async listByGroup(groupId, { offset, limit, search, isActive }) {
     const where = { group_id: groupId };
     if (typeof isActive === 'boolean') where.is_active = isActive;
     if (search) {
-      const term = `%${search}%`;
-      where[Op.or] = [
-        { name_marathi: { [Op.like]: term } },
-        { name_english: { [Op.like]: term } },
-        { phone: { [Op.like]: term } },
-      ];
+      const term = escapeRegex(search);
+      const re = new RegExp(term, 'i');
+      where.$or = [{ name_marathi: re }, { name_english: re }, { phone: re }];
     }
-    const { rows, count } = await Member.findAndCountAll({
-      where,
-      offset,
-      limit,
-      order: [['name_english', 'ASC']],
-    });
+    const [rows, count] = await Promise.all([
+      Member.find(where).sort({ name_english: 1 }).skip(offset).limit(limit),
+      Member.countDocuments(where),
+    ]);
     return { rows, count };
   },
   async sumBalance(groupId) {
-    const r = await Member.findOne({
-      attributes: [[sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('savings_balance')), 0), 'total']],
-      where: { group_id: groupId },
-      raw: true,
-    });
-    return r?.total ?? 0;
+    const r = await Member.aggregate([
+      { $match: { group_id: groupId } },
+      { $group: { _id: null, total: { $sum: '$savings_balance' } } },
+    ]);
+    return r[0]?.total ?? 0;
   },
   async countByGroup(groupId, { activeOnly } = {}) {
     const where = { group_id: groupId };
     if (activeOnly) where.is_active = true;
-    return Member.count({ where });
+    return Member.countDocuments(where);
   },
   async countActiveExcluding(groupId, excludeMemberId) {
     const where = { group_id: groupId, is_active: true };
-    if (excludeMemberId) where.id = { [Op.ne]: excludeMemberId };
-    return Member.count({ where });
+    if (excludeMemberId) where._id = { $ne: excludeMemberId };
+    return Member.countDocuments(where);
   },
-  /** Active members in group (for loan voting pending lists). */
   async listActiveMembersInGroup(groupId) {
-    return Member.findAll({
-      where: { group_id: groupId, is_active: true },
-      attributes: ['id', 'name_marathi', 'name_english'],
-      order: [['name_english', 'ASC']],
-      raw: true,
-    });
+    return Member.find({ group_id: groupId, is_active: true })
+      .select('name_marathi name_english')
+      .sort({ name_english: 1 })
+      .lean({ virtuals: true });
   },
-  /** User ids linked to active members in the group (for in-app notifications). */
   async listActiveUserIdsInGroup(groupId) {
-    const rows = await Member.findAll({
-      where: { group_id: groupId, is_active: true },
-      attributes: ['user_id'],
-      raw: true,
-    });
+    const rows = await Member.find({ group_id: groupId, is_active: true }).select('user_id').lean();
     const ids = [...new Set(rows.map((r) => r.user_id).filter(Boolean))];
     return ids;
   },

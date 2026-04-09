@@ -5,29 +5,25 @@ const groupRepository = {
   async findById(id) {
     if (id == null || id === '') return null;
     const canon = normalizeEntityId(id);
-    return Group.findByPk(canon || id);
+    return Group.findById(canon || id);
   },
   async create(data, options = {}) {
-    return Group.create(data, options);
+    const opts = options.session ? { session: options.session } : {};
+    return Group.create(data, opts);
   },
   async list() {
-    return Group.findAll({ order: [['created_at', 'ASC']] });
+    return Group.find().sort({ created_at: 1 });
   },
   async countByCreator(creatorUserId) {
-    return Group.count({ where: { creator_user_id: creatorUserId } });
+    return Group.countDocuments({ creator_user_id: creatorUserId });
   },
   async listByCreator(creatorUserId) {
-    return Group.findAll({
-      where: { creator_user_id: creatorUserId },
-      order: [['created_at', 'ASC']],
-    });
+    return Group.find({ creator_user_id: creatorUserId }).sort({ created_at: 1 });
   },
   async setCreator(groupId, creatorUserId, options = {}) {
-    const [n] = await Group.update(
-      { creator_user_id: creatorUserId },
-      { where: { id: groupId }, ...options }
-    );
-    return n > 0;
+    const opts = options.session ? { session: options.session } : {};
+    const r = await Group.updateOne({ _id: groupId }, { creator_user_id: creatorUserId }, opts);
+    return r.matchedCount > 0;
   },
 };
 

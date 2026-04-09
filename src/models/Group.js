@@ -1,37 +1,23 @@
-import { DataTypes } from 'sequelize';
-import sequelize from '../config/database.js';
+import mongoose from 'mongoose';
+import { randomUUID } from 'crypto';
 
-const Group = sequelize.define(
-  'Group',
+const { Schema } = mongoose;
+
+const groupSchema = new Schema(
   {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true,
-    },
-    name_marathi: { type: DataTypes.STRING(255), allowNull: false },
-    name_english: { type: DataTypes.STRING(255), allowNull: false },
-    /** Monthly loan interest % (flat on principal in current EMI model). */
-    loan_interest_rate_monthly_percent: {
-      type: DataTypes.DECIMAL(6, 3),
-      allowNull: false,
-      defaultValue: 1.5,
-    },
-    max_members: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 50 },
-    contribution_cycle_type: {
-      type: DataTypes.STRING(16),
-      allowNull: false,
-      defaultValue: 'monthly',
-    },
-    /** When contribution_cycle_type is `custom`, interval in days. */
-    contribution_cycle_days: { type: DataTypes.INTEGER, allowNull: true },
-    creator_user_id: {
-      type: DataTypes.UUID,
-      allowNull: true,
-      references: { model: 'users', key: 'id' },
-    },
+    _id: { type: String, default: () => randomUUID() },
+    name_marathi: { type: String, required: true },
+    name_english: { type: String, required: true },
+    loan_interest_rate_monthly_percent: { type: Number, required: true, default: 1.5 },
+    max_members: { type: Number, required: true, default: 50 },
+    contribution_cycle_type: { type: String, required: true, default: 'monthly' },
+    contribution_cycle_days: { type: Number, default: null },
+    creator_user_id: { type: String, default: null },
   },
-  { tableName: 'groups' }
+  {
+    collection: 'groups',
+    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
+  }
 );
 
-export default Group;
+export default mongoose.model('Group', groupSchema);

@@ -1,47 +1,21 @@
-import { DataTypes } from 'sequelize';
-import sequelize from '../config/database.js';
-import User from './User.js';
+import mongoose from 'mongoose';
+import { randomUUID } from 'crypto';
 
-const RefreshToken = sequelize.define(
-  'RefreshToken',
+const { Schema } = mongoose;
+
+const refreshTokenSchema = new Schema(
   {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true,
-    },
-    user_id: {
-      type: DataTypes.UUID,
-      allowNull: false,
-      references: { model: User, key: 'id' },
-    },
-    token_hash: {
-      type: DataTypes.STRING(64),
-      allowNull: false,
-      unique: true,
-    },
-    device_id: {
-      type: DataTypes.STRING(128),
-      allowNull: true,
-    },
-    expires_at: {
-      type: DataTypes.DATE,
-      allowNull: false,
-    },
-    revoked_at: {
-      type: DataTypes.DATE,
-      allowNull: true,
-    },
+    _id: { type: String, default: () => randomUUID() },
+    user_id: { type: String, required: true },
+    token_hash: { type: String, required: true, unique: true },
+    device_id: { type: String, default: null },
+    expires_at: { type: Date, required: true },
+    revoked_at: { type: Date, default: null },
   },
   {
-    tableName: 'refresh_tokens',
-    timestamps: true,
-    updatedAt: false,
-    createdAt: 'created_at',
+    collection: 'refresh_tokens',
+    timestamps: { createdAt: 'created_at', updatedAt: false },
   }
 );
 
-User.hasMany(RefreshToken, { foreignKey: 'user_id', as: 'refreshTokens' });
-RefreshToken.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
-
-export default RefreshToken;
+export default mongoose.model('RefreshToken', refreshTokenSchema);

@@ -1,30 +1,24 @@
-import { DataTypes } from 'sequelize';
-import sequelize from '../config/database.js';
+import mongoose from 'mongoose';
+import { randomUUID } from 'crypto';
 
-const LoanVote = sequelize.define(
-  'LoanVote',
+const { Schema } = mongoose;
+
+const loanVoteSchema = new Schema(
   {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true,
-    },
-    loan_id: { type: DataTypes.UUID, allowNull: false },
-    voter_member_id: { type: DataTypes.UUID, allowNull: false },
-    decision: {
-      type: DataTypes.ENUM('approve', 'reject'),
-      allowNull: false,
-    },
-    comment: { type: DataTypes.TEXT, allowNull: true },
+    _id: { type: String, default: () => randomUUID() },
+    loan_id: { type: String, required: true },
+    voter_member_id: { type: String, required: true },
+    decision: { type: String, required: true, enum: ['approve', 'reject'] },
+    comment: { type: String, default: null },
   },
   {
-    tableName: 'loan_votes',
-    indexes: [
-      { fields: ['loan_id'] },
-      { fields: ['voter_member_id'] },
-      { unique: true, fields: ['loan_id', 'voter_member_id'], name: 'loan_votes_loan_voter_unique' },
-    ],
+    collection: 'loan_votes',
+    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
   }
 );
 
-export default LoanVote;
+loanVoteSchema.index({ loan_id: 1 });
+loanVoteSchema.index({ voter_member_id: 1 });
+loanVoteSchema.index({ loan_id: 1, voter_member_id: 1 }, { unique: true });
+
+export default mongoose.model('LoanVote', loanVoteSchema);

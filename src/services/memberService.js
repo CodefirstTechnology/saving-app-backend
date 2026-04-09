@@ -1,4 +1,5 @@
-import { sequelize } from '../models/index.js';
+import { withMongoTransaction } from '../config/database.js';
+import { Loan } from '../models/index.js';
 import memberRepository from '../repositories/memberRepository.js';
 import userRepository from '../repositories/userRepository.js';
 import groupRepository from '../repositories/groupRepository.js';
@@ -88,43 +89,42 @@ const memberService = {
 
     const displayPhone = body.phone?.trim() || (mDigits ? `+91${mDigits}` : null);
 
-    const t = await sequelize.transaction();
+    let mem;
+    let loginUser = null;
     try {
-      const mem = await memberRepository.create(
-        {
-          group_id: groupId,
-          name_marathi: body.nameMarathi,
-          name_english: body.nameEnglish,
-          phone: displayPhone,
-          savings_balance: body.savingsBalance ?? 0,
-          is_active: body.isActive !== false,
-        },
-        { transaction: t }
-      );
-
-      let loginUser = null;
-      if (wantsLogin) {
-        loginUser = await userRepository.create(
+      await withMongoTransaction(async (session) => {
+        mem = await memberRepository.create(
           {
-            email: null,
-            mobile_number: mDigits,
-            password_hash: await hashPassword(body.password),
-            full_name: body.nameEnglish || body.nameMarathi,
-            role: ROLES.USER,
             group_id: groupId,
-            member_id: mem.id,
+            name_marathi: body.nameMarathi,
+            name_english: body.nameEnglish,
+            phone: displayPhone,
+            savings_balance: body.savingsBalance ?? 0,
+            is_active: body.isActive !== false,
           },
-          { transaction: t }
+          { session }
         );
-        await mem.update({ user_id: loginUser.id }, { transaction: t });
-      }
 
-      await t.commit();
+        if (wantsLogin) {
+          loginUser = await userRepository.create(
+            {
+              email: null,
+              mobile_number: mDigits,
+              password_hash: await hashPassword(body.password),
+              full_name: body.nameEnglish || body.nameMarathi,
+              role: ROLES.USER,
+              group_id: groupId,
+              member_id: mem.id,
+            },
+            { session }
+          );
+          await memberRepository.update(mem.id, groupId, { user_id: loginUser.id }, { session });
+        }
+      });
       const out = serializeMember(await memberRepository.findById(mem.id, groupId));
       return { ...out, loginCreated: Boolean(loginUser) };
     } catch (e) {
-      await t.rollback();
-      if (e?.name === 'SequelizeUniqueConstraintError') {
+      if (e?.code === 11000 || e?.codeName === 'DuplicateKey') {
         throw new AppError(409, 'User already exists in this group');
       }
       throw e;
@@ -160,10 +160,7 @@ const memberService = {
       memberRepository.countByGroup(groupId, { activeOnly: true }),
       memberRepository.sumBalance(groupId),
     ]);
-    const { Loan } = await import('../models/index.js');
-    const overdueLoans = await Loan.count({
-      where: { group_id: groupId, status: 'overdue' },
-    });
+    const overdueLoans = await Loan.countDocuments({ group_id: groupId, status: 'overdue' });
     return {
       totalMembers,
       activeMembers,

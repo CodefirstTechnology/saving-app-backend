@@ -1,28 +1,25 @@
-import { DataTypes } from 'sequelize';
-import sequelize from '../config/database.js';
+import mongoose from 'mongoose';
+import { randomUUID } from 'crypto';
 
-const Notification = sequelize.define(
-  'Notification',
+const { Schema } = mongoose;
+
+const notificationSchema = new Schema(
   {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true,
-    },
-    user_id: { type: DataTypes.UUID, allowNull: false },
-    category: { type: DataTypes.STRING(64), allowNull: false },
-    title: { type: DataTypes.STRING(255), allowNull: false },
-    body: { type: DataTypes.TEXT, allowNull: false },
-    payload: { type: DataTypes.JSON, allowNull: true },
-    read_at: { type: DataTypes.DATE, allowNull: true },
+    _id: { type: String, default: () => randomUUID() },
+    user_id: { type: String, required: true },
+    category: { type: String, required: true },
+    title: { type: String, required: true },
+    body: { type: String, required: true },
+    payload: { type: Schema.Types.Mixed, default: null },
+    read_at: { type: Date, default: null },
   },
   {
-    tableName: 'notifications',
-    indexes: [
-      { fields: ['user_id'] },
-      { name: 'notifications_user_read', fields: ['user_id', 'read_at'] },
-    ],
+    collection: 'notifications',
+    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
   }
 );
 
-export default Notification;
+notificationSchema.index({ user_id: 1 });
+notificationSchema.index({ user_id: 1, read_at: 1 });
+
+export default mongoose.model('Notification', notificationSchema);

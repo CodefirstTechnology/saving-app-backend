@@ -1,36 +1,29 @@
-import { DataTypes } from 'sequelize';
-import sequelize from '../config/database.js';
+import mongoose from 'mongoose';
+import { randomUUID } from 'crypto';
 
-const Member = sequelize.define(
-  'Member',
+const { Schema } = mongoose;
+
+const memberSchema = new Schema(
   {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true,
-    },
-    group_id: { type: DataTypes.UUID, allowNull: false },
-    user_id: { type: DataTypes.UUID, allowNull: true },
-    name_marathi: { type: DataTypes.STRING(255), allowNull: false },
-    name_english: { type: DataTypes.STRING(255), allowNull: false },
-    phone: { type: DataTypes.STRING(32), allowNull: true },
-    savings_balance: {
-      type: DataTypes.DECIMAL(14, 2),
-      allowNull: false,
-      defaultValue: 0,
-    },
-    is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
-    missed_payments_count: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
-    fines_total: { type: DataTypes.DECIMAL(14, 2), allowNull: false, defaultValue: 0 },
+    _id: { type: String, default: () => randomUUID() },
+    group_id: { type: String, required: true },
+    user_id: { type: String, default: null },
+    name_marathi: { type: String, required: true },
+    name_english: { type: String, required: true },
+    phone: { type: String, default: null },
+    savings_balance: { type: Number, required: true, default: 0 },
+    is_active: { type: Boolean, required: true, default: true },
+    missed_payments_count: { type: Number, required: true, default: 0 },
+    fines_total: { type: Number, required: true, default: 0 },
   },
   {
-    tableName: 'members',
-    indexes: [
-      { fields: ['group_id'] },
-      { fields: ['phone'] },
-      { name: 'members_group_phone', fields: ['group_id', 'phone'] },
-    ],
+    collection: 'members',
+    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
   }
 );
 
-export default Member;
+memberSchema.index({ group_id: 1 });
+memberSchema.index({ phone: 1 });
+memberSchema.index({ group_id: 1, phone: 1 });
+
+export default mongoose.model('Member', memberSchema);

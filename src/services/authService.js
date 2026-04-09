@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { sequelize } from '../models/index.js';
+import { withMongoTransaction } from '../config/database.js';
 import userRepository from '../repositories/userRepository.js';
 import groupRepository from '../repositories/groupRepository.js';
 import refreshTokenRepository from '../repositories/refreshTokenRepository.js';
@@ -49,7 +49,7 @@ async function buildTokenResponse(user, device_id) {
     payload.refreshToken = rawRefresh;
   } catch (e) {
     logger.warn(
-      'refresh_tokens insert failed — login still returns access JWT. Run: npx sequelize-cli db:migrate',
+      'refresh_tokens insert failed — login still returns access JWT. Check MongoDB connection and indexes.',
       e.message
     );
   }
@@ -67,35 +67,35 @@ const authService = {
     }
     if (await userRepository.hasAnyUserWithMobile(m)) throw new AppError(409, 'Mobile number already registered');
 
-    const t = await sequelize.transaction();
+    let user;
     try {
-      if (group) {
-        await groupRepository.create(
+      await withMongoTransaction(async (session) => {
+        if (group) {
+          await groupRepository.create(
+            {
+              name_marathi: group.nameMarathi,
+              name_english: group.nameEnglish,
+            },
+            { session }
+          );
+        }
+        user = await userRepository.create(
           {
-            name_marathi: group.nameMarathi,
-            name_english: group.nameEnglish,
+            email: null,
+            mobile_number: m,
+            password_hash: await hashPassword(password),
+            full_name: name,
+            role: ROLES.SUPER_ADMIN,
+            group_id: null,
+            member_id: null,
           },
-          { transaction: t }
+          { session }
         );
-      }
-      const user = await userRepository.create(
-        {
-          email: null,
-          mobile_number: m,
-          password_hash: await hashPassword(password),
-          full_name: name,
-          role: ROLES.SUPER_ADMIN,
-          group_id: null,
-          member_id: null,
-        },
-        { transaction: t }
-      );
-      await t.commit();
-      return buildTokenResponse(user, device_id);
+      });
     } catch (e) {
-      await t.rollback();
       throw e;
     }
+    return buildTokenResponse(user, device_id);
   },
 
   /**
@@ -131,32 +131,31 @@ const authService = {
     const full_name = `${first_name.trim()} ${last_name.trim()}`.trim();
     const pin = pincode.trim();
 
-    const t = await sequelize.transaction();
     try {
-      await userRepository.create(
-        {
-          email: emailNorm,
-          mobile_number: m,
-          password_hash: await hashPassword(password),
-          full_name,
-          role: ROLES.ADMIN,
-          group_id: null,
-          member_id: null,
-          city: city.trim(),
-          state: state.trim(),
-          town: town.trim(),
-          pincode: pin,
-        },
-        { transaction: t }
-      );
-      await t.commit();
+      await withMongoTransaction(async (session) => {
+        await userRepository.create(
+          {
+            email: emailNorm,
+            mobile_number: m,
+            password_hash: await hashPassword(password),
+            full_name,
+            role: ROLES.ADMIN,
+            group_id: null,
+            member_id: null,
+            city: city.trim(),
+            state: state.trim(),
+            town: town.trim(),
+            pincode: pin,
+          },
+          { session }
+        );
+      });
       return {
         message:
           'Registration successful. Sign in with your phone number and password, then create your first Bachat Gat from the app menu.',
       };
     } catch (e) {
-      await t.rollback();
-      if (e?.name === 'SequelizeUniqueConstraintError') {
+      if (e?.code === 11000 || e?.codeName === 'DuplicateKey') {
         throw new AppError(409, 'Email or mobile number already registered');
       }
       throw e;

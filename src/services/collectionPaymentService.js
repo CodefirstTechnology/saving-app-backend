@@ -1,4 +1,4 @@
-import { sequelize } from '../models/index.js';
+import { withMongoTransaction } from '../config/database.js';
 import { formatISO } from '../utils/date.js';
 import collectionPaymentRepository from '../repositories/collectionPaymentRepository.js';
 import memberRepository from '../repositories/memberRepository.js';
@@ -124,8 +124,7 @@ const collectionPaymentService = {
     const occurredAt = formatISO(new Date(payment.paid_at), 'date');
     const ledgerMode = paymentModeToLedger(payment.payment_method);
 
-    const t = await sequelize.transaction();
-    try {
+    await withMongoTransaction(async (session) => {
       const { transactionId } = await transactionService.applySavingsCredit(
         {
           groupId,
@@ -136,23 +135,21 @@ const collectionPaymentService = {
           createdByUserId: user.id,
           descriptionEnglish: `Collection payment (${payment.payment_method})`,
         },
-        t
+        session
       );
 
-      await payment.update(
+      await collectionPaymentRepository.patch(
+        paymentId,
+        groupId,
         {
           status: 'collected',
           collected_at: new Date(),
           confirmed_by_user_id: user.id,
           linked_transaction_id: transactionId,
         },
-        { transaction: t }
+        { session }
       );
-      await t.commit();
-    } catch (e) {
-      await t.rollback();
-      throw e;
-    }
+    });
 
     const refreshed = await collectionPaymentRepository.findById(paymentId, groupId);
     const payer = await memberRepository.findById(payment.member_id, groupId);
@@ -202,7 +199,7 @@ const collectionPaymentService = {
     if (!payment) throw new AppError(404, 'Payment record not found');
     if (payment.status !== 'initiated') throw new AppError(400, 'Only initiated payments can be rejected');
 
-    await payment.update({
+    await collectionPaymentRepository.patch(paymentId, groupId, {
       status: 'rejected',
       rejected_at: new Date(),
       rejected_by_user_id: user.id,

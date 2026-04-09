@@ -1,4 +1,4 @@
-import { sequelize } from '../models/index.js';
+import { withMongoTransaction } from '../config/database.js';
 import transactionRepository from '../repositories/transactionRepository.js';
 import memberRepository from '../repositories/memberRepository.js';
 import { AppError } from '../middlewares/errorHandler.js';
@@ -12,9 +12,9 @@ function ensureManager(user) {
 /**
  * Credits member savings (ledger row + balance). Used by admin direct entry and collection confirmation.
  * @param {object} opts
- * @param {import('sequelize').Transaction} [trx]
+ * @param {*} [session] MongoDB session from `withMongoTransaction`; when set, joins caller transaction (no nested txn).
  */
-async function applySavingsCredit(opts, trx = undefined) {
+async function applySavingsCredit(opts, session = undefined) {
   const row = {
     group_id: opts.groupId,
     member_id: opts.memberId,
@@ -29,29 +29,26 @@ async function applySavingsCredit(opts, trx = undefined) {
     created_by_user_id: opts.createdByUserId,
   };
 
-  const run = async (t) => {
-    const created = await transactionRepository.create(row, { transaction: t });
-    await Member.increment(
-      { savings_balance: opts.amount },
-      { where: { id: opts.memberId, group_id: opts.groupId }, transaction: t }
+  const run = async (s) => {
+    const created = await transactionRepository.create(row, { session: s });
+    const updated = await Member.findOneAndUpdate(
+      { _id: opts.memberId, group_id: opts.groupId },
+      { $inc: { savings_balance: opts.amount } },
+      { session: s, new: true }
     );
+    if (!updated) throw new AppError(404, 'Member not found');
     return created.id;
   };
 
-  if (trx) {
-    const transactionId = await run(trx);
+  if (session) {
+    const transactionId = await run(session);
     return { transactionId };
   }
 
-  const t = await sequelize.transaction();
-  try {
-    const transactionId = await run(t);
-    await t.commit();
+  return withMongoTransaction(async (s) => {
+    const transactionId = await run(s);
     return { transactionId };
-  } catch (e) {
-    await t.rollback();
-    throw e;
-  }
+  });
 }
 
 const transactionService = {
@@ -122,8 +119,7 @@ const transactionService = {
     const amount = Number(body.amount);
     if (amount <= 0) throw new AppError(400, 'Amount must be positive');
 
-    const t = await sequelize.transaction();
-    try {
+    await withMongoTransaction(async (session) => {
       await transactionRepository.create(
         {
           group_id: groupId,
@@ -138,26 +134,24 @@ const transactionService = {
           occurred_at: body.occurredAt,
           created_by_user_id: user.id,
         },
-        { transaction: t }
+        { session }
       );
 
       if (body.memberId && body.category === 'savings' && body.entryType === 'credit') {
-        await Member.increment(
-          { savings_balance: amount },
-          { where: { id: body.memberId, group_id: groupId }, transaction: t }
+        await Member.findOneAndUpdate(
+          { _id: body.memberId, group_id: groupId },
+          { $inc: { savings_balance: amount } },
+          { session }
         );
       }
       if (body.memberId && body.category === 'savings' && body.entryType === 'debit') {
-        await Member.increment(
-          { savings_balance: -amount },
-          { where: { id: body.memberId, group_id: groupId }, transaction: t }
+        await Member.findOneAndUpdate(
+          { _id: body.memberId, group_id: groupId },
+          { $inc: { savings_balance: -amount } },
+          { session }
         );
       }
-      await t.commit();
-    } catch (e) {
-      await t.rollback();
-      throw e;
-    }
+    });
     return { ok: true };
   },
 
@@ -193,7 +187,7 @@ function serializeTx(tx) {
     occurredAt: tx.occurred_at,
     member: tx.member
       ? {
-          id: tx.member.id,
+          id: tx.member.id ?? tx.member._id,
           nameMarathi: tx.member.name_marathi,
           nameEnglish: tx.member.name_english,
         }

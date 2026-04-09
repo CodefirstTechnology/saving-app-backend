@@ -1,46 +1,42 @@
-import { DataTypes } from 'sequelize';
-import sequelize from '../config/database.js';
+import mongoose from 'mongoose';
+import { randomUUID } from 'crypto';
+
+const { Schema } = mongoose;
 
 const ENTRY_TYPES = ['credit', 'debit'];
 const CATEGORIES = ['savings', 'loan_issue', 'loan_repay', 'interest', 'fine', 'other'];
 
-const Transaction = sequelize.define(
-  'Transaction',
+const transactionSchema = new Schema(
   {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true,
+    _id: { type: String, default: () => randomUUID() },
+    group_id: { type: String, required: true },
+    member_id: { type: String, default: null },
+    loan_id: { type: String, default: null },
+    entry_type: { type: String, required: true, enum: ENTRY_TYPES },
+    category: { type: String, required: true, enum: CATEGORIES },
+    amount: { type: Number, required: true },
+    description_marathi: { type: String, default: null },
+    description_english: { type: String, default: null },
+    payment_mode: {
+      type: String,
+      default: null,
+      validate: { validator: (v) => v == null || v === 'cash' || v === 'bank' },
     },
-    group_id: { type: DataTypes.UUID, allowNull: false },
-    member_id: { type: DataTypes.UUID, allowNull: true },
-    loan_id: { type: DataTypes.UUID, allowNull: true },
-    entry_type: {
-      type: DataTypes.ENUM(...ENTRY_TYPES),
-      allowNull: false,
-    },
-    category: {
-      type: DataTypes.ENUM(...CATEGORIES),
-      allowNull: false,
-    },
-    amount: { type: DataTypes.DECIMAL(14, 2), allowNull: false },
-    description_marathi: { type: DataTypes.STRING(500), allowNull: true },
-    description_english: { type: DataTypes.STRING(500), allowNull: true },
-    payment_mode: { type: DataTypes.ENUM('cash', 'bank'), allowNull: true },
-    occurred_at: { type: DataTypes.DATEONLY, allowNull: false },
-    created_by_user_id: { type: DataTypes.UUID, allowNull: true },
+    occurred_at: { type: String, required: true },
+    created_by_user_id: { type: String, default: null },
   },
   {
-    tableName: 'transactions',
-    indexes: [
-      { fields: ['group_id'] },
-      { fields: ['member_id'] },
-      { fields: ['occurred_at'] },
-      { fields: ['category'] },
-      { name: 'tx_group_date', fields: ['group_id', 'occurred_at'] },
-    ],
+    collection: 'transactions',
+    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
   }
 );
 
+transactionSchema.index({ group_id: 1 });
+transactionSchema.index({ member_id: 1 });
+transactionSchema.index({ occurred_at: 1 });
+transactionSchema.index({ category: 1 });
+transactionSchema.index({ group_id: 1, occurred_at: 1 });
+
+const Transaction = mongoose.model('Transaction', transactionSchema);
 export default Transaction;
 export { ENTRY_TYPES, CATEGORIES };

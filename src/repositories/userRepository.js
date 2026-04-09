@@ -1,75 +1,61 @@
-import { Op } from 'sequelize';
 import { User } from '../models/index.js';
 
 const userRepository = {
   async findById(id) {
-    return User.findByPk(id);
+    return User.findById(id);
   },
   async findByEmail(email) {
     if (!email) return null;
-    return User.findOne({ where: { email: email.toLowerCase() } });
+    return User.findOne({ email: email.toLowerCase() });
   },
-  /** First row with this mobile (legacy); prefer findAllByMobileNumber / findByMobileNumberAndGroupId. */
   async findByMobileNumber(mobileDigits) {
     if (!mobileDigits) return null;
-    return User.findOne({ where: { mobile_number: mobileDigits } });
+    return User.findOne({ mobile_number: mobileDigits });
   },
 
   async findAllByMobileNumber(mobileDigits) {
     if (!mobileDigits) return [];
-    return User.findAll({
-      where: { mobile_number: mobileDigits },
-      order: [['created_at', 'ASC']],
-    });
+    return User.find({ mobile_number: mobileDigits }).sort({ created_at: 1 });
   },
 
   async findByMobileNumberAndGroupId(mobileDigits, groupId) {
     if (!mobileDigits || groupId == null || groupId === '') return null;
-    return User.findOne({ where: { mobile_number: mobileDigits, group_id: groupId } });
+    return User.findOne({ mobile_number: mobileDigits, group_id: groupId });
   },
 
   async hasAnyUserWithMobile(mobileDigits) {
     if (!mobileDigits) return false;
-    const n = await User.count({ where: { mobile_number: mobileDigits } });
+    const n = await User.countDocuments({ mobile_number: mobileDigits });
     return n > 0;
   },
   async findByMemberId(memberId) {
     if (!memberId) return null;
-    return User.findOne({ where: { member_id: memberId } });
+    return User.findOne({ member_id: memberId });
   },
   async create(data, options = {}) {
-    return User.create(data, options);
+    const opts = options.session ? { session: options.session } : {};
+    return User.create(data, opts);
   },
-  async updateGroupId(id, group_id) {
-    const [n] = await User.update({ group_id }, { where: { id } });
-    return n > 0;
+  async updateGroupId(id, group_id, options = {}) {
+    const opts = options.session ? { session: options.session } : {};
+    const r = await User.updateOne({ _id: id }, { group_id }, opts);
+    return r.matchedCount > 0;
   },
   async count() {
-    return User.count();
+    return User.countDocuments();
   },
-  /** Every user account tied to this group (members + leaders) — for transparency broadcasts. */
   async listAllUserIdsInGroup(groupId) {
     if (!groupId) return [];
-    const rows = await User.findAll({
-      where: { group_id: groupId },
-      attributes: ['id'],
-      raw: true,
-    });
-    return [...new Set(rows.map((r) => r.id))];
+    const rows = await User.find({ group_id: groupId }).select('_id').lean();
+    return [...new Set(rows.map((r) => r._id))];
   },
 
-  /** Group admins (and super_admin scoped to group) for leader notifications. */
   async listStaffUserIdsForGroup(groupId) {
     if (!groupId) return [];
-    const rows = await User.findAll({
-      where: {
-        group_id: groupId,
-        role: { [Op.in]: ['admin'] },
-      },
-      attributes: ['id'],
-      raw: true,
-    });
-    return rows.map((r) => r.id);
+    const rows = await User.find({ group_id: groupId, role: { $in: ['admin'] } })
+      .select('_id')
+      .lean();
+    return rows.map((r) => r._id);
   },
 };
 

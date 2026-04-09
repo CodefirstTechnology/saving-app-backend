@@ -12,7 +12,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 
@@ -24,62 +23,58 @@ const PASSWORD = process.env.DEMO_MEMBER_PASSWORD || 'Member123!';
 const FULL_NAME = process.env.DEMO_MEMBER_FULL_NAME || 'Demo Member';
 
 async function main() {
-  const conn = await mysql.createConnection({
-    host: process.env.DB_HOST || '127.0.0.1',
-    port: Number(process.env.DB_PORT) || 3306,
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD === undefined ? '' : process.env.DB_PASSWORD,
-    database: process.env.DB_NAME || 'bachat_pragati',
-  });
+  const { connectDb, disconnectDb } = await import('../src/config/database.js');
+  const { Group, Member, User } = await import('../src/models/index.js');
 
-  const [groups] = await conn.query('SELECT id FROM `groups` ORDER BY created_at ASC LIMIT 1');
-  if (!groups.length) {
-    console.error('No groups found. Create a group first (bootstrap or seed).');
-    process.exitCode = 1;
-    await conn.end();
-    return;
+  await connectDb();
+  try {
+    const group = await Group.findOne().sort({ created_at: 1 });
+    if (!group) {
+      console.error('No groups found. Create a group first (bootstrap or seed).');
+      process.exitCode = 1;
+      return;
+    }
+    const groupId = group._id;
+
+    const memberRow = await Member.findOne({ group_id: groupId }).sort({ created_at: 1 });
+    if (!memberRow) {
+      console.error('No members in that group. Add members first.');
+      process.exitCode = 1;
+      return;
+    }
+    const memberId = memberRow._id;
+
+    const byEmail = await User.findOne({ email: EMAIL.toLowerCase() });
+    if (byEmail) {
+      console.log(`Already exists: ${EMAIL} (id: ${byEmail.id})`);
+      return;
+    }
+
+    const byMember = await User.findOne({ member_id: memberId });
+    if (byMember) {
+      console.log(`First member already has login: ${byMember.email}`);
+      return;
+    }
+
+    const hash = await bcrypt.hash(PASSWORD, 12);
+    const id = randomUUID();
+    await User.create({
+      _id: id,
+      email: EMAIL.toLowerCase(),
+      password_hash: hash,
+      role: 'user',
+      group_id: groupId,
+      member_id: memberId,
+      full_name: FULL_NAME,
+    });
+
+    console.log('Created member (user) account:');
+    console.log(`  Email:    ${EMAIL}`);
+    console.log(`  Password: ${PASSWORD}`);
+    console.log(`  User id:  ${id}`);
+  } finally {
+    await disconnectDb();
   }
-  const groupId = groups[0].id;
-
-  const [members] = await conn.query(
-    'SELECT id FROM members WHERE group_id = ? ORDER BY created_at ASC LIMIT 1',
-    [groupId]
-  );
-  if (!members.length) {
-    console.error('No members in that group. Add members first.');
-    process.exitCode = 1;
-    await conn.end();
-    return;
-  }
-  const memberId = members[0].id;
-
-  const [byEmail] = await conn.query('SELECT id FROM users WHERE email = ?', [EMAIL.toLowerCase()]);
-  if (byEmail.length) {
-    console.log(`Already exists: ${EMAIL} (id: ${byEmail[0].id})`);
-    await conn.end();
-    return;
-  }
-
-  const [byMember] = await conn.query('SELECT id, email FROM users WHERE member_id = ?', [memberId]);
-  if (byMember.length) {
-    console.log(`First member already has login: ${byMember[0].email}`);
-    await conn.end();
-    return;
-  }
-
-  const hash = await bcrypt.hash(PASSWORD, 12);
-  const id = randomUUID();
-  await conn.query(
-    `INSERT INTO users (id, email, password_hash, role, group_id, member_id, full_name, created_at, updated_at)
-     VALUES (?, ?, ?, 'user', ?, ?, ?, NOW(), NOW())`,
-    [id, EMAIL.toLowerCase(), hash, groupId, memberId, FULL_NAME]
-  );
-
-  console.log('Created member (user) account:');
-  console.log(`  Email:    ${EMAIL}`);
-  console.log(`  Password: ${PASSWORD}`);
-  console.log(`  User id:  ${id}`);
-  await conn.end();
 }
 
 main().catch((e) => {

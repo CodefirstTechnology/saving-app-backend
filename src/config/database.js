@@ -1,4 +1,4 @@
-import { Sequelize } from 'sequelize';
+import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -6,49 +6,33 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-const nodeEnv = process.env.NODE_ENV || 'development';
-
-const mysqlDefaults = {
-  dialect: 'mysql',
-  define: {
-    underscored: true,
-    timestamps: true,
-    charset: 'utf8mb4',
-    collate: 'utf8mb4_unicode_ci',
-  },
-  dialectOptions: {
-    charset: 'utf8mb4',
-  },
-};
-
-function createSequelize() {
-  const logging = nodeEnv === 'development' ? console.log : false;
-
-  if (nodeEnv === 'production' && process.env.DATABASE_URL) {
-    return new Sequelize(process.env.DATABASE_URL, {
-      ...mysqlDefaults,
-      logging,
-      dialectOptions: {
-        ...mysqlDefaults.dialectOptions,
-        ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
-      },
-    });
+export async function connectDb() {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    throw new Error('MONGODB_URI is required (e.g. MongoDB Atlas connection string)');
   }
-
-  const password = process.env.DB_PASSWORD === undefined ? '' : process.env.DB_PASSWORD;
-
-  return new Sequelize(
-    process.env.DB_NAME || 'bachat_pragati',
-    process.env.DB_USER || 'root',
-    password,
-    {
-      host: process.env.DB_HOST || '127.0.0.1',
-      port: Number(process.env.DB_PORT) || 3306,
-      ...mysqlDefaults,
-      logging,
-    }
-  );
+  mongoose.set('strictQuery', true);
+  await mongoose.connect(uri);
 }
 
-const sequelize = createSequelize();
-export default sequelize;
+export async function disconnectDb() {
+  await mongoose.disconnect();
+}
+
+/** Run a callback inside a MongoDB transaction (replaces Sequelize transactions). */
+export async function withMongoTransaction(fn) {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const result = await fn(session);
+    await session.commitTransaction();
+    return result;
+  } catch (e) {
+    await session.abortTransaction();
+    throw e;
+  } finally {
+    session.endSession();
+  }
+}
+
+export default mongoose;

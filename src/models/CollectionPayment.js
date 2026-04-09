@@ -1,48 +1,39 @@
-import { DataTypes } from 'sequelize';
-import sequelize from '../config/database.js';
+import mongoose from 'mongoose';
+import { randomUUID } from 'crypto';
+
+const { Schema } = mongoose;
 
 const PAYMENT_METHODS = ['cash', 'upi', 'bank_transfer'];
 const COLLECTION_STATUSES = ['initiated', 'collected', 'rejected'];
 
-const CollectionPayment = sequelize.define(
-  'CollectionPayment',
+const collectionPaymentSchema = new Schema(
   {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true,
-    },
-    group_id: { type: DataTypes.UUID, allowNull: false },
-    member_id: { type: DataTypes.UUID, allowNull: false },
-    submitted_by_user_id: { type: DataTypes.UUID, allowNull: true },
-    amount: { type: DataTypes.DECIMAL(14, 2), allowNull: false },
-    payment_method: {
-      type: DataTypes.ENUM(...PAYMENT_METHODS),
-      allowNull: false,
-    },
-    transaction_reference: { type: DataTypes.STRING(255), allowNull: true },
-    paid_at: { type: DataTypes.DATE, allowNull: false },
-    status: {
-      type: DataTypes.ENUM(...COLLECTION_STATUSES),
-      allowNull: false,
-      defaultValue: 'initiated',
-    },
-    digitally_traceable: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
-    requires_admin_confirm: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
-    collected_at: { type: DataTypes.DATE, allowNull: true },
-    confirmed_by_user_id: { type: DataTypes.UUID, allowNull: true },
-    rejected_at: { type: DataTypes.DATE, allowNull: true },
-    rejected_by_user_id: { type: DataTypes.UUID, allowNull: true },
-    linked_transaction_id: { type: DataTypes.UUID, allowNull: true },
+    _id: { type: String, default: () => randomUUID() },
+    group_id: { type: String, required: true },
+    member_id: { type: String, required: true },
+    submitted_by_user_id: { type: String, default: null },
+    amount: { type: Number, required: true },
+    payment_method: { type: String, required: true, enum: PAYMENT_METHODS },
+    transaction_reference: { type: String, default: null },
+    paid_at: { type: Date, required: true },
+    status: { type: String, required: true, default: 'initiated', enum: COLLECTION_STATUSES },
+    digitally_traceable: { type: Boolean, required: true, default: false },
+    requires_admin_confirm: { type: Boolean, required: true, default: true },
+    collected_at: { type: Date, default: null },
+    confirmed_by_user_id: { type: String, default: null },
+    rejected_at: { type: Date, default: null },
+    rejected_by_user_id: { type: String, default: null },
+    linked_transaction_id: { type: String, default: null },
   },
   {
-    tableName: 'collection_payments',
-    indexes: [
-      { name: 'collection_payments_group_status', fields: ['group_id', 'status'] },
-      { name: 'collection_payments_group_member', fields: ['group_id', 'member_id'] },
-    ],
+    collection: 'collection_payments',
+    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
   }
 );
 
+collectionPaymentSchema.index({ group_id: 1, status: 1 });
+collectionPaymentSchema.index({ group_id: 1, member_id: 1 });
+
+const CollectionPayment = mongoose.model('CollectionPayment', collectionPaymentSchema);
 export default CollectionPayment;
 export { PAYMENT_METHODS, COLLECTION_STATUSES };

@@ -4,7 +4,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import env, { validateEnv } from './config/env.js';
-import sequelize from './config/database.js';
+import { connectDb } from './config/database.js';
 import './models/index.js';
 import createV1Router from './routes/v1/index.js';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js';
@@ -33,8 +33,8 @@ const prefix = env.apiPrefix;
 
 async function start() {
   try {
-    await sequelize.authenticate();
-    logger.info('Database connection established');
+    await connectDb();
+    logger.info('MongoDB connection established');
   } catch (e) {
     logger.error('Unable to connect to database', e.message);
     process.exit(1);
