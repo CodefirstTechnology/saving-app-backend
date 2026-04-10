@@ -1,4 +1,5 @@
 import { CollectionPayment, Member } from '../models/index.js';
+import { createWithOptionalSession } from '../utils/mongooseCreate.js';
 
 async function attachMember(doc) {
   if (!doc) return null;
@@ -22,7 +23,7 @@ const collectionPaymentRepository = {
   },
 
   async create(data, options = {}) {
-    const row = await CollectionPayment.create(data, sessionOpts(options));
+    const row = await createWithOptionalSession(CollectionPayment, data, options);
     return attachMember(row);
   },
 

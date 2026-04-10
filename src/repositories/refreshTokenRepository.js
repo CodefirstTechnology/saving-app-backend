@@ -1,11 +1,11 @@
 import { RefreshToken } from '../models/index.js';
+import { createWithOptionalSession } from '../utils/mongooseCreate.js';
 
 const refreshTokenRepository = {
   async create({ id, user_id, token_hash, device_id, expires_at }, options = {}) {
     const doc = { user_id, token_hash, device_id, expires_at };
     if (id) doc._id = id;
-    const opts = options.session ? { session: options.session } : {};
-    return RefreshToken.create(doc, opts);
+    return createWithOptionalSession(RefreshToken, doc, options);
   },
 
   async findValidByHash(token_hash) {

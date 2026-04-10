@@ -1,4 +1,5 @@
 import { Group } from '../models/index.js';
+import { createWithOptionalSession } from '../utils/mongooseCreate.js';
 import { normalizeEntityId } from '../utils/idCompare.js';
 
 const groupRepository = {
@@ -8,8 +9,7 @@ const groupRepository = {
     return Group.findById(canon || id);
   },
   async create(data, options = {}) {
-    const opts = options.session ? { session: options.session } : {};
-    return Group.create(data, opts);
+    return createWithOptionalSession(Group, data, options);
   },
   async list() {
     return Group.find().sort({ created_at: 1 });

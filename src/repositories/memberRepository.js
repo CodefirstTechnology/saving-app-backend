@@ -1,4 +1,5 @@
 import { Member } from '../models/index.js';
+import { createWithOptionalSession } from '../utils/mongooseCreate.js';
 
 function escapeRegex(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -11,8 +12,7 @@ const memberRepository = {
     return Member.findOne(q);
   },
   async create(data, options = {}) {
-    const opts = options.session ? { session: options.session } : {};
-    return Member.create(data, opts);
+    return createWithOptionalSession(Member, data, options);
   },
   async update(id, groupId, data, options = {}) {
     const m = await this.findById(id, groupId);

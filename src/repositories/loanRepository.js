@@ -1,4 +1,5 @@
 import { Loan, Member, LoanVote } from '../models/index.js';
+import { createWithOptionalSession } from '../utils/mongooseCreate.js';
 
 async function hydrateLoanDoc(loan) {
   if (!loan) return null;
@@ -58,8 +59,7 @@ const loanRepository = {
     return hydrateLoanDoc(loan);
   },
   async create(data, options = {}) {
-    const opts = options.session ? { session: options.session } : {};
-    const created = await Loan.create(data, opts);
+    const created = await createWithOptionalSession(Loan, data, options);
     return hydrateLoanDoc(created);
   },
   async update(loan, data, options = {}) {

@@ -1,9 +1,9 @@
 import { BankDeposit } from '../models/index.js';
+import { createWithOptionalSession } from '../utils/mongooseCreate.js';
 
 const bankDepositRepository = {
   async create(data, options = {}) {
-    const opts = options.session ? { session: options.session } : {};
-    return BankDeposit.create(data, opts);
+    return createWithOptionalSession(BankDeposit, data, options);
   },
 
   async listByGroup(groupId, { limit = 100, offset = 0 } = {}, options = {}) {

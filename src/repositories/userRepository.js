@@ -1,4 +1,5 @@
 import { User } from '../models/index.js';
+import { createWithOptionalSession } from '../utils/mongooseCreate.js';
 
 const userRepository = {
   async findById(id) {
@@ -33,8 +34,7 @@ const userRepository = {
     return User.findOne({ member_id: memberId });
   },
   async create(data, options = {}) {
-    const opts = options.session ? { session: options.session } : {};
-    return User.create(data, opts);
+    return createWithOptionalSession(User, data, options);
   },
   async updateGroupId(id, group_id, options = {}) {
     const opts = options.session ? { session: options.session } : {};

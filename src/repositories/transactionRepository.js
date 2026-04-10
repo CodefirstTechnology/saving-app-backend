@@ -1,4 +1,5 @@
 import { Transaction, Member } from '../models/index.js';
+import { createWithOptionalSession } from '../utils/mongooseCreate.js';
 
 async function attachMembersToTransactions(rows) {
   const memberIds = [...new Set(rows.map((r) => r.member_id).filter(Boolean))];
@@ -21,8 +22,7 @@ const transactionRepository = {
     return withMember;
   },
   async create(data, options = {}) {
-    const opts = options.session ? { session: options.session } : {};
-    return Transaction.create(data, opts);
+    return createWithOptionalSession(Transaction, data, options);
   },
   async listByGroup(groupId, { offset, limit, memberId, category, categories, entryType, entryTypes, dateFrom, dateTo }) {
     const where = { group_id: groupId };

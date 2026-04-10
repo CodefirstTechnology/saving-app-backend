@@ -11,13 +11,19 @@ import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js';
 import logger from './utils/logger.js';
 import { optionalRequestSigning } from './middlewares/requestSigning.js';
 import { buildApiRateLimiters } from './middlewares/rateLimiters.js';
+import { getCorsOriginOption } from './config/cors.js';
 
 validateEnv();
 
 const app = express();
 app.set('trust proxy', 1);
-app.use(helmet());
-app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') || true }));
+app.use(
+  helmet({
+    /** Default `same-origin` can confuse some cross-origin clients; public JSON API is fine with cross-origin. */
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
+app.use(cors({ origin: getCorsOriginOption() }));
 app.use(
   express.json({
     limit: '1mb',

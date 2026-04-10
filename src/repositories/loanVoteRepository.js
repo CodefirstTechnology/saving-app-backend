@@ -1,4 +1,5 @@
 import { LoanVote, Member } from '../models/index.js';
+import { createWithOptionalSession } from '../utils/mongooseCreate.js';
 
 const loanVoteRepository = {
   async listByLoanId(loanId) {
@@ -18,8 +19,7 @@ const loanVoteRepository = {
     return LoanVote.findOne({ loan_id: loanId, voter_member_id: voterMemberId });
   },
   async create(data, options = {}) {
-    const opts = options.session ? { session: options.session } : {};
-    return LoanVote.create(data, opts);
+    return createWithOptionalSession(LoanVote, data, options);
   },
 };
 

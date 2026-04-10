@@ -1,9 +1,9 @@
 import { Notification } from '../models/index.js';
+import { createWithOptionalSession } from '../utils/mongooseCreate.js';
 
 const notificationRepository = {
   async create(data, options = {}) {
-    const opts = options.session ? { session: options.session } : {};
-    return Notification.create(data, opts);
+    return createWithOptionalSession(Notification, data, options);
   },
   async listForUser(userId, { limit = 50, unreadOnly = false } = {}) {
     const where = { user_id: userId };
