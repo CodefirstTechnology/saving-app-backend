@@ -13,14 +13,15 @@ function paymentModeToLedger(mode) {
 }
 
 function serializePayment(p) {
+  const paymentId = p.id ?? p._id;
   const m = p.member;
   return {
-    id: p.id,
+    id: paymentId != null ? String(paymentId) : null,
     groupId: p.group_id,
     memberId: p.member_id,
     member: m
       ? {
-          id: m.id,
+          id: String(m.id ?? m._id),
           nameMarathi: m.name_marathi,
           nameEnglish: m.name_english,
           phone: m.phone,
@@ -121,13 +122,17 @@ const collectionPaymentService = {
     if (!payment) throw new AppError(404, 'Payment record not found');
     if (payment.status !== 'initiated') throw new AppError(400, 'Only initiated payments can be confirmed');
 
+    /** Exact `group_id` on the payment row — must match `members.group_id` for ledger updates (query param can differ by casing/format). */
+    const scopedGroupId = payment.group_id;
+    if (!scopedGroupId) throw new AppError(400, 'Invalid payment data');
+
     const occurredAt = formatISO(new Date(payment.paid_at), 'date');
     const ledgerMode = paymentModeToLedger(payment.payment_method);
 
     await withMongoTransaction(async (session) => {
       const { transactionId } = await transactionService.applySavingsCredit(
         {
-          groupId,
+          groupId: scopedGroupId,
           memberId: payment.member_id,
           amount: Number(payment.amount),
           paymentMode: ledgerMode,
@@ -140,7 +145,7 @@ const collectionPaymentService = {
 
       await collectionPaymentRepository.patch(
         paymentId,
-        groupId,
+        scopedGroupId,
         {
           status: 'collected',
           collected_at: new Date(),
@@ -151,8 +156,8 @@ const collectionPaymentService = {
       );
     });
 
-    const refreshed = await collectionPaymentRepository.findById(paymentId, groupId);
-    const payer = await memberRepository.findById(payment.member_id, groupId);
+    const refreshed = await collectionPaymentRepository.findById(paymentId, scopedGroupId);
+    const payer = await memberRepository.findById(payment.member_id, scopedGroupId);
     const payerUserId = payer?.user_id;
 
     if (payerUserId) {
@@ -164,7 +169,7 @@ const collectionPaymentService = {
       });
     }
 
-    await notificationService.notifyAllUsersInGroup(groupId, {
+    await notificationService.notifyAllUsersInGroup(scopedGroupId, {
       category: 'payment_confirmed_broadcast',
       title: 'Payment confirmed',
       body: `A member payment of ₹${payment.amount} was confirmed.`,
@@ -172,16 +177,16 @@ const collectionPaymentService = {
       excludeUserIds: payerUserId ? [payerUserId] : [],
     });
 
-    const rec = await reconciliationService.getReconciliation(groupId);
+    const rec = await reconciliationService.getReconciliation(scopedGroupId);
     if (rec.state === 'mismatch') {
-      await notificationService.notifyAllUsersInGroup(groupId, {
+      await notificationService.notifyAllUsersInGroup(scopedGroupId, {
         category: 'deposit_mismatch',
         title: 'Fund mismatch detected',
         body: 'Recorded bank deposits exceed total collected payments. Please review.',
         payload: { state: rec.state },
       });
     } else if (rec.state === 'partial') {
-      await notificationService.notifyAllUsersInGroup(groupId, {
+      await notificationService.notifyAllUsersInGroup(scopedGroupId, {
         category: 'pending_deposit',
         title: 'Pending bank deposit',
         body: `₹${rec.pendingDepositAmount} is collected but not yet fully deposited to the bank.`,
@@ -199,14 +204,17 @@ const collectionPaymentService = {
     if (!payment) throw new AppError(404, 'Payment record not found');
     if (payment.status !== 'initiated') throw new AppError(400, 'Only initiated payments can be rejected');
 
-    await collectionPaymentRepository.patch(paymentId, groupId, {
+    const scopedGroupId = payment.group_id;
+    if (!scopedGroupId) throw new AppError(400, 'Invalid payment data');
+
+    await collectionPaymentRepository.patch(paymentId, scopedGroupId, {
       status: 'rejected',
       rejected_at: new Date(),
       rejected_by_user_id: user.id,
     });
 
-    const refreshed = await collectionPaymentRepository.findById(paymentId, groupId);
-    const payer = await memberRepository.findById(payment.member_id, groupId);
+    const refreshed = await collectionPaymentRepository.findById(paymentId, scopedGroupId);
+    const payer = await memberRepository.findById(payment.member_id, scopedGroupId);
     if (payer?.user_id) {
       await notificationService.notifyUser(payer.user_id, {
         category: 'payment_rejected',
