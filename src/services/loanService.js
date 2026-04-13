@@ -157,7 +157,7 @@ function serializeLoan(loan, ctx = {}) {
     if (mv) myVote = { decision: mv.decision, comment: mv.comment };
   }
   return {
-    id: loan.id,
+    id: loan._id ?? loan.id,
     groupId: loan.group_id,
     memberId: loan.member_id,
     referenceCode: loan.reference_code,
