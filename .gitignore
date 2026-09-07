@@ -1,2 +1,4 @@
+node_modules                            
+src/utils/seedSuperAdmin.js
+
 .env
-node_modules
