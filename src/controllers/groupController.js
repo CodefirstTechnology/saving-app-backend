@@ -27,6 +27,15 @@ export async function listMine(req, res, next) {
   }
 }
 
+export async function update(req, res, next) {
+  try {
+    const data = await groupService.updateGroup(req.user, req.params.groupId || req.user.groupId, req.body);
+    res.json({ success: true, data });
+  } catch (e) {
+    next(e);
+  }
+}
+
 export async function assignAdmin(req, res, next) {
   try {
     const data = await groupService.assignGroupAdmin(req.user, req.params.groupId, req.body);

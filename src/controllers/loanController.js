@@ -11,7 +11,7 @@ export async function list(req, res, next) {
 
 export async function request(req, res, next) {
   try {
-    const data = await loanService.request(req.user, req.body);
+    const data = await loanService.request(req.user, req.body, req.groupScopeId);
     res.status(201).json({ success: true, data });
   } catch (e) {
     next(e);

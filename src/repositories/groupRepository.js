@@ -25,6 +25,13 @@ const groupRepository = {
     const r = await Group.updateOne({ _id: groupId }, { creator_user_id: creatorUserId }, opts);
     return r.matchedCount > 0;
   },
+  async update(id, updateData) {
+    const canon = normalizeEntityId(id);
+    return Group.findByIdAndUpdate(canon || id, updateData, { new: true });
+  },
+  async count() {
+    return Group.countDocuments();
+  },
 };
 
 export default groupRepository;

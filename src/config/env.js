@@ -16,7 +16,7 @@ const env = {
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS) || 12,
   apiPrefix: process.env.API_PREFIX || '/api/v1',
   /** Optional; when set, /translate uses Google instead of the free MyMemory fallback */
-  googleTranslateApiKey: process.env.GOOGLE_TRANSLATE_API_KEY || '',
+  googleTranslateApiKey: process.env.GOOGLE_TRANSLATE_API_KEY || process.env.GOOGLE_TRANSLATE_API || '',
   /** When set, POST/PATCH/DELETE require X-App-Timestamp + X-App-Signature (HMAC-SHA256) */
   apiRequestSigningSecret: process.env.API_REQUEST_SIGNING_SECRET || '',
   /** e.g. redis://redis:6379 — if unset, rate limiting uses in-memory store */

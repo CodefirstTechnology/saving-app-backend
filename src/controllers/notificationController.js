@@ -46,3 +46,16 @@ export async function markAllRead(req, res, next) {
     next(e);
   }
 }
+
+export async function registerToken(req, res, next) {
+  try {
+    const { token } = req.body;
+    if (token && req.user?.id) {
+      await notificationService.registerPushToken(req.user.id, token);
+    }
+    res.json({ success: true, message: 'Push notification token registered', token });
+  } catch (e) {
+    next(e);
+  }
+}
+

@@ -1,8 +1,9 @@
 import { withMongoTransaction } from '../config/database.js';
-import { Loan } from '../models/index.js';
+import { Loan, User } from '../models/index.js';
 import memberRepository from '../repositories/memberRepository.js';
 import userRepository from '../repositories/userRepository.js';
 import groupRepository from '../repositories/groupRepository.js';
+import notificationService from './notificationService.js';
 import { hashPassword } from '../utils/password.js';
 import { AppError } from '../middlewares/errorHandler.js';
 import { ROLES, canManageGroup } from '../constants/roles.js';
@@ -16,13 +17,8 @@ function ensureManager(user) {
 const memberService = {
   async list(user, query, groupId) {
     if (!groupId) throw new AppError(400, 'groupId missing');
-    if (user.role === ROLES.USER && user.memberId) {
-      const m = await memberRepository.findById(user.memberId, groupId);
-      const data = m ? [serializeMember(m)] : [];
-      return { data, meta: { page: 1, pageSize: 1, total: data.length, totalPages: 1 } };
-    }
     const page = Math.max(1, Number(query.page) || 1);
-    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 50));
     const offset = (page - 1) * pageSize;
     const search = query.search || undefined;
     let isActive;
@@ -131,6 +127,86 @@ const memberService = {
     }
   },
 
+  /** Add existing registered user to Bachat Gat by unique userId / _id / mobile / uniqueMemberId */
+  async addByUserId(user, targetUserId, groupId) {
+    ensureManager(user);
+    if (!groupId) throw new AppError(400, 'groupId missing');
+    if (!targetUserId || typeof targetUserId !== 'string') {
+      throw new AppError(400, 'User ID is required');
+    }
+
+    const trimmedId = targetUserId.trim();
+
+    // 1. Validate that the user exists (search by unique application user_id, _id, member_id, or mobile_number)
+    let existingUser = await userRepository.findByUserId(trimmedId);
+    if (!existingUser) {
+      existingUser = await userRepository.findById(trimmedId);
+    }
+    if (!existingUser) {
+      existingUser = await userRepository.findByMemberId(trimmedId);
+    }
+    if (!existingUser && /^[6-9]\d{9}$/.test(trimmedId)) {
+      existingUser = await userRepository.findByMobileNumber(trimmedId);
+    }
+
+    if (!existingUser) {
+      throw new AppError(404, 'User not found. Please verify the User ID.');
+    }
+
+    // 2. Check if the user is already part of this Bachat Gat
+    if (existingUser.group_id && existingUser.group_id === groupId) {
+      throw new AppError(409, 'This user is already a member of this Bachat Gat.');
+    }
+
+    const existingMemberRecord = await memberRepository.findById(existingUser.member_id, groupId);
+    if (existingMemberRecord) {
+      throw new AppError(409, 'This user is already a member of this Bachat Gat.');
+    }
+
+    // 3. Confirm group exists & hasn't reached max limit
+    const groupRow = await groupRepository.findById(groupId);
+    if (!groupRow) throw new AppError(404, 'Bachat Gat not found');
+
+    const maxMembers = Number(groupRow.max_members ?? groupRow.get?.('max_members'));
+    const currentCount = await memberRepository.countByGroup(groupId);
+    if (Number.isFinite(maxMembers) && maxMembers >= 2 && currentCount >= maxMembers) {
+      throw new AppError(400, 'This group has reached its maximum member limit');
+    }
+
+    // 4. Add user to Bachat Gat without changing global user role
+    let mem;
+    await withMongoTransaction(async (session) => {
+      mem = await memberRepository.create(
+        {
+          group_id: groupId,
+          user_id: existingUser.id,
+          name_marathi: existingUser.full_name || 'सभासद',
+          name_english: existingUser.full_name || 'Member',
+          phone: existingUser.mobile_number ? `+91${existingUser.mobile_number}` : null,
+          savings_balance: 0,
+          is_active: true,
+        },
+        { session }
+      );
+
+      // Link user to member_id & group_id without modifying user.role
+      await userRepository.updateGroupId(existingUser.id, groupId, { session });
+      await User.updateOne({ _id: existingUser.id }, { member_id: mem.id }, { session });
+    });
+
+    // 5. Send FCM Push Notification to the added member
+    const gatName = groupRow.name_english || groupRow.name_marathi || 'Bachat Gat';
+    await notificationService.notifyUser(existingUser.id, {
+      category: 'group',
+      title: 'Added to Bachat Gat / बचत गटामध्ये जोडले',
+      body: `You have been added to ${gatName}.`,
+      payload: { groupId, bachatGatId: groupId },
+    });
+
+    const out = serializeMember(await memberRepository.findById(mem.id, groupId));
+    return { ...out, user: { id: existingUser.id, userId: existingUser.user_id, name: existingUser.full_name, role: existingUser.role } };
+  },
+
   async update(user, id, body, groupId) {
     ensureManager(user);
     if (!groupId) throw new AppError(400, 'groupId missing');
@@ -174,6 +250,8 @@ function serializeMember(m) {
   return {
     id: m.id,
     groupId: m.group_id,
+    userId: m.user_id,
+    user_id: m.user_id,
     nameMarathi: m.name_marathi,
     nameEnglish: m.name_english,
     phone: m.phone,

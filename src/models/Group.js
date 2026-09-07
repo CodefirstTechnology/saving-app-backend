@@ -12,6 +12,7 @@ const groupSchema = new Schema(
     max_members: { type: Number, required: true, default: 50 },
     contribution_cycle_type: { type: String, required: true, default: 'monthly' },
     contribution_cycle_days: { type: Number, default: null },
+    annual_savings_goal: { type: Number, default: 200000 },
     creator_user_id: { type: String, default: null },
   },
   {

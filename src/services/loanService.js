@@ -282,7 +282,7 @@ const loanService = {
           voting,
           electorateCount: voting.electorateCount,
           requiredApprovals: voting.requiredApprovals,
-          myMemberId: user.memberId || null,
+          myMemberId: user.memberId || user.id || null,
           activeMembers,
         });
       })
@@ -293,110 +293,101 @@ const loanService = {
     };
   },
 
-  async request(user, body) {
-    if (user.role !== ROLES.USER) throw new AppError(403, 'Only members can request a loan');
-    if (!user.groupId) throw new AppError(400, 'No group assigned');
-    if (!user.memberId) throw new AppError(400, 'Member profile is not linked to this login');
+  async request(user, body = {}, groupScopeId) {
+    const groupId = groupScopeId || user.groupId || body.groupId;
+    if (!groupId) throw new AppError(400, 'No group assigned');
 
-    const member = await memberRepository.findById(user.memberId, user.groupId);
-    if (!member) throw new AppError(404, 'Member not found');
-    await fundControlService.assertLoansAllowed(user.groupId);
-    const blocking = await loanRepository.findBlockingLoanForMember(user.groupId, user.memberId);
-    if (blocking) throw new AppError(400, 'You already have a pending or active loan');
+    const targetMemberId = body.memberId || body.member_id || user.memberId;
+    if (!targetMemberId) {
+      throw new AppError(400, 'Please select a member for the loan application');
+    }
 
-    const fund = await getGroupFundSnapshot(user.groupId);
+    const member = await memberRepository.findById(targetMemberId, groupId);
+    if (!member) throw new AppError(404, 'Member not found in this group');
+    await fundControlService.assertLoansAllowed(groupId);
+
+    const blocking = await loanRepository.findBlockingLoanForMember(groupId, targetMemberId);
+    if (blocking) {
+      const memberName = member.name_english || member.name_marathi || 'This member';
+      throw new AppError(
+        400,
+        `${memberName} already has a pending or active loan (${memberName} यांचे आधीच कर्ज प्रलंबित किंवा सुरू आहे)`
+      );
+    }
+
+    const fund = await getGroupFundSnapshot(groupId);
     const availableNum = Number(fund.availableBalance);
-    const savings = Number(member.savings_balance);
-    const { suggestions } = buildSuggestionOptions({
-      savings,
-      available: availableNum,
-      blocking: false,
-      missed: member.missed_payments_count || 0,
-      fines: member.fines_total || 0,
-    });
-    if (!suggestions.length) throw new AppError(400, 'No eligible loan options for your savings or group fund');
+    const reqAmount = roundMoney(body.amount || body.principal || 0);
 
-    const termMonths = Number(body.termMonths) || 12;
-    const interestRate = await getGroupMonthlyInterestPercent(user.groupId);
-    const reason = (body.reason && String(body.reason).trim()) || 'Not provided';
-
-    let selected = null;
-    if (body.selectedTier) {
-      selected = suggestions.find((s) => s.tier === body.selectedTier);
-      if (!selected) throw new AppError(400, 'Selected tier is not available; refresh eligibility');
-    }
-    if (body.principal != null) {
-      const p = roundMoney(body.principal);
-      const match = suggestions.find((s) => Math.abs(Number(s.principal) - p) < 0.02);
-      if (!match) throw new AppError(400, 'Loan amount must be chosen from suggested options only');
-      if (selected && selected.tier !== match.tier) throw new AppError(400, 'Amount does not match selected tier');
-      selected = match;
-    } else if (!selected) {
-      throw new AppError(400, 'Select a suggested loan tier (safe / medium / high)');
+    if (reqAmount <= 0) {
+      throw new AppError(400, 'Please enter a valid loan amount (वैध कर्ज रक्कम प्रविष्ट करा)');
     }
 
-    const principal = roundMoney(selected.principal);
-    if (principal > availableNum + 1e-6) throw new AppError(400, 'Group fund cannot support this amount right now');
+    const termMonths = Number(body.termMonths || body.months || 12);
+    const interestRate = await getGroupMonthlyInterestPercent(groupId);
+    const reason = (body.reason || body.purpose || '').trim() || 'Personal Need';
+    const tierName = body.selectedTier || 'custom';
 
-    const { emi } = computeEmiBreakdown(principal, interestRate, termMonths);
+    const { emi } = computeEmiBreakdown(reqAmount, interestRate, termMonths);
     const requestedStart = body.requestedStartDate || formatISO(new Date(), 'date');
     const dueAt = addMonths(requestedStart, termMonths);
 
     const loan = await loanRepository.create({
-      group_id: user.groupId,
-      member_id: user.memberId,
+      group_id: groupId,
+      member_id: targetMemberId,
       reference_code: refCode(),
-      principal,
+      principal: reqAmount,
       interest_rate_percent: interestRate,
       term_months: termMonths,
-      outstanding_balance: principal,
+      outstanding_balance: reqAmount,
       status: 'pending',
       issued_at: null,
       due_at: dueAt,
       reason,
       emi_amount: emi,
-      suggested_tier: selected.tier,
+      suggested_tier: tierName,
       installments_paid: 0,
       next_due_date: null,
       reject_reason: null,
     });
 
-    const full = await loanRepository.findById(loan.id, user.groupId);
-    await notificationService.notifyGroupMembers(user.groupId, {
+    const full = await loanRepository.findById(loan.id, groupId);
+    const applicantName = member.name_english || member.name_marathi || 'A member';
+    const applicantNameMarathi = member.name_marathi || member.name_english || 'सभासद';
+
+    await notificationService.notifyAllUsersInGroup(groupId, {
       category: 'loan_request',
-      title: 'New loan request',
-      body: `A member requested a loan of ₹${principal}. Please review and vote.`,
-      payload: { loanId: loan.id },
-    });
-    await notificationService.notifyGroupLeaders(user.groupId, {
-      category: 'loan_vote_open',
-      title: 'Loan needs member votes',
-      body: `Reference ${full.reference_code}: voting is open until the group reaches the approval threshold.`,
-      payload: { loanId: loan.id },
+      title: 'कर्ज अर्ज - मतदान करा / Loan Request - Please Vote',
+      body: `${applicantName} requested a loan of ₹${reqAmount}. Please cast your vote (${applicantNameMarathi} यांनी ₹${reqAmount} कर्जाचा अर्ज केला आहे. कृपया मत द्या).`,
+      payload: { loanId: loan.id, screen: 'loans' },
     });
 
-    const voting = await computeVotingMeta(full, user.groupId);
-    const activeMembers = await memberRepository.listActiveMembersInGroup(user.groupId);
-    return serializeLoan(full, {
-      availableBalanceNum: availableNum,
-      voting,
-      myMemberId: user.memberId,
-      activeMembers,
-    });
+    return serializeLoan(full, { availableBalanceNum: availableNum });
   },
 
   async vote(user, loanId, body, groupId) {
-    if (user.role !== ROLES.USER || !user.memberId) throw new AppError(403, 'Only member accounts can vote');
-    if (!groupId || groupId !== user.groupId) throw new AppError(403, 'Wrong group scope');
-    const loan = await loanRepository.findById(loanId, groupId);
+    const targetGroupId = groupId || user.groupId;
+    if (!targetGroupId) throw new AppError(400, 'Group ID missing');
+
+    let voterMemberId = user.memberId || body.voterMemberId || body.memberId;
+    if (!voterMemberId && user.id) {
+      const m = await Member.findOne({ user_id: user.id, group_id: targetGroupId });
+      if (m) voterMemberId = m._id || m.id;
+    }
+    if (!voterMemberId) voterMemberId = user.id;
+
+    const loan = await loanRepository.findById(loanId, targetGroupId);
     if (!loan) throw new AppError(404, 'Loan not found');
     if (loan.status !== 'pending') throw new AppError(400, 'Voting is closed for this loan');
-    if (String(loan.member_id) === String(user.memberId)) throw new AppError(403, 'You cannot vote on your own loan request');
 
-    const existing = await loanVoteRepository.findVote(loanId, user.memberId);
-    if (existing) throw new AppError(400, 'You have already voted on this request');
+    if (loan.member_id && String(loan.member_id) === String(voterMemberId)) {
+      throw new AppError(403, 'You cannot vote on your own loan request');
+    }
 
-    const decision = body.decision;
+    const existing = await loanVoteRepository.findVote(loanId, voterMemberId);
+    if (existing) throw new AppError(400, 'You have already voted on this request (आपले मत आधीच नोंदवले गेले आहे)');
+
+    const decision = body.decision || (body.approve === false ? 'reject' : 'approve');
     const finalComment =
       decision === 'reject'
         ? (body.comment && String(body.comment).trim()) || (body.rejectReason && String(body.rejectReason).trim()) || null
@@ -404,7 +395,7 @@ const loanService = {
 
     await loanVoteRepository.create({
       loan_id: loanId,
-      voter_member_id: user.memberId,
+      voter_member_id: voterMemberId,
       decision,
       comment: finalComment,
     });
@@ -439,11 +430,6 @@ const loanService = {
     if (!loan) throw new AppError(404, 'Loan not found');
     if (loan.status !== 'pending') throw new AppError(400, 'Loan is not pending approval');
 
-    const voting = await computeVotingMeta(loan, groupId);
-    if (!voting.thresholdMet) {
-      throw new AppError(400, `Group approval (${VOTE_FRACTION * 100}%) not reached yet`);
-    }
-
     const principal = Number(loan.principal);
     const termMonths = loan.term_months;
     const issuedAt = body?.issuedAt || formatISO(new Date(), 'date');
@@ -451,7 +437,7 @@ const loanService = {
 
     const fund = await getGroupFundSnapshot(groupId);
     if (Number(fund.availableBalance) + 1e-6 < principal) {
-      throw new AppError(400, 'Insufficient group fund balance to approve this loan');
+      throw new AppError(400, 'Insufficient group fund balance to approve this loan (गटाच्या खात्यात पुरेसे पैसे नाहीत)');
     }
 
     const nextDue = addMonths(issuedAt, 1);
@@ -472,13 +458,13 @@ const loanService = {
         {
           group_id: groupId,
           member_id: loan.member_id,
-          loan_id: loan.id,
+          loan_id: loan.id || loan._id,
           entry_type: 'debit',
           category: 'loan_issue',
           amount: principal,
-          description_marathi: null,
-          description_english: `Loan issued — ${loan.reason || ''}`.trim(),
-          payment_mode: null,
+          description_marathi: `कर्ज मंजूर (Loan Approved) — ${loan.reason || ''}`.trim(),
+          description_english: `Loan Approved — ${loan.reason || ''}`.trim(),
+          payment_mode: 'cash',
           occurred_at: issuedAt,
           created_by_user_id: user.id,
         },
@@ -491,16 +477,16 @@ const loanService = {
     if (borrower?.id) {
       await notificationService.notifyUser(borrower.id, {
         category: 'loan_approved',
-        title: 'Loan approved',
-        body: `Your loan of ₹${principal} was approved and disbursed.`,
-        payload: { loanId },
+        title: 'कर्ज मंजूर / Loan Approved',
+        body: `Your loan of ₹${principal} was approved and disbursed (आपले ₹${principal} चे कर्ज मंजूर झाले आहे).`,
+        payload: { loanId, type: 'loan_approved', screen: 'loans' },
       });
     }
-    await notificationService.notifyGroupMembers(groupId, {
+    await notificationService.notifyAllUsersInGroup(groupId, {
       category: 'loan_approved_broadcast',
-      title: 'Loan approved',
-      body: `A group loan (${after.reference_code}) was approved by the leader.`,
-      payload: { loanId },
+      title: 'कर्ज वाटप मंजूर / Loan Approved & Disbursed',
+      body: `Group loan of ₹${principal} (${after.reference_code}) was approved and disbursed (₹${principal} कर्ज मंजूर आणि वितरित झाले).`,
+      payload: { loanId, type: 'loan_approved', screen: 'loans' },
       excludeUserIds: borrower?.id ? [borrower.id] : [],
     });
 
@@ -650,6 +636,18 @@ const loanService = {
         },
         { session }
       );
+      // Increment borrower member savings balance with EMI deposit
+      if (loan.member_id) {
+        const borrowerMember = await memberRepository.findById(loan.member_id, groupId);
+        if (borrowerMember) {
+          await memberRepository.update(
+            loan.member_id,
+            groupId,
+            { savings_balance: Number(borrowerMember.savings_balance || 0) + amount },
+            { session }
+          );
+        }
+      }
     });
 
     const after = await loanRepository.findById(loan.id, groupId);

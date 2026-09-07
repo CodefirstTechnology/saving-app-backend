@@ -19,9 +19,11 @@ import {
   loginSchema,
   refreshTokenSchema,
   logoutSchema,
+  googleAuthSchema,
   registerAdminSchema,
   createAdminSchema,
   createGroupSchema,
+  updateGroupSchema,
   translateSchema,
   memberCreateSchema,
   memberUpdateSchema,
@@ -55,6 +57,7 @@ export default function createV1Router(limiters) {
 
   r.post('/auth/bootstrap', loginLimiter, validateBody(bootstrapSchema), authController.bootstrap);
   r.post('/auth/login', loginLimiter, validateBody(loginSchema), authController.login);
+  r.post('/auth/google', loginLimiter, validateBody(googleAuthSchema), authController.googleLogin);
   r.post('/auth/refresh', authStrictLimiter, validateBody(refreshTokenSchema), authController.refresh);
   r.post('/auth/logout', authStrictLimiter, validateBody(logoutSchema), authController.logout);
   r.post(
@@ -64,11 +67,12 @@ export default function createV1Router(limiters) {
     authController.registerAdmin
   );
 
+  r.post('/translate', validateBody(translateSchema), translationController.translateText);
+
   r.use(authenticate);
   r.use(sensitiveLimiter);
 
-  r.post('/translate', validateBody(translateSchema), translationController.translateText);
-
+  r.get('/admin/metrics', authorizeRoles('super_admin'), adminController.getMetrics);
   r.post(
     '/admin/create-admin',
     authorizeRoles('super_admin'),
@@ -78,12 +82,19 @@ export default function createV1Router(limiters) {
 
   r.get('/groups/mine', authorizeRoles('admin'), groupController.listMine);
   r.get('/groups', authorizeRoles('super_admin'), groupController.list);
-  /** Admins create Bachat Gats on their own (capped); super_admin may still create from the org console. */
+  /** Only Admins create Bachat Gats in normal workflow. */
   r.post(
     '/groups',
-    authorizeRoles('admin', 'super_admin'),
+    authorizeRoles('admin'),
     validateBody(createGroupSchema),
     groupController.create
+  );
+  r.put(
+    '/groups/:groupId',
+    groupScopeOptionalForSuperAdmin,
+    authorizeRoles('admin', 'super_admin'),
+    validateBody(updateGroupSchema),
+    groupController.update
   );
 
   r.get('/dashboard/summary', groupScopeOptionalForSuperAdmin, dashboardController.summary);
@@ -91,51 +102,56 @@ export default function createV1Router(limiters) {
   r.get(
     '/members/summary',
     groupScopeMiddleware,
-    authorizeRoles('super_admin', 'admin'),
+    authorizeRoles('admin'),
     memberController.summary
   );
   r.get('/members', groupScopeMiddleware, validateQuery(groupScopedPaginationSchema), memberController.list);
   r.get('/members/:id', groupScopeMiddleware, memberController.getById);
   r.post(
+    '/members/add-by-id',
+    groupScopeMiddleware,
+    authorizeRoles('admin'),
+    memberController.addById
+  );
+  r.post(
     '/members',
     groupScopeMiddleware,
-    authorizeRoles('super_admin', 'admin'),
+    authorizeRoles('admin'),
     validateBody(memberCreateSchema),
     memberController.create
   );
   r.patch(
     '/members/:id',
     groupScopeMiddleware,
-    authorizeRoles('super_admin', 'admin'),
+    authorizeRoles('admin'),
     validateBody(memberUpdateSchema),
     memberController.update
   );
-  r.delete('/members/:id', groupScopeMiddleware, authorizeRoles('super_admin', 'admin'), memberController.remove);
+  r.delete('/members/:id', groupScopeMiddleware, authorizeRoles('admin'), memberController.remove);
 
   r.get('/transactions/summary', groupScopeMiddleware, validateQuery(ledgerSummaryQuerySchema), transactionController.ledgerSummary);
   r.get('/transactions', groupScopeMiddleware, validateQuery(transactionListQuerySchema), transactionController.list);
   r.post(
     '/transactions/savings',
     groupScopeMiddleware,
-    authorizeRoles('super_admin', 'admin'),
+    authorizeRoles('admin'),
     validateBody(savingsEntrySchema),
     transactionController.savings
   );
   r.post(
     '/transactions',
     groupScopeMiddleware,
-    authorizeRoles('super_admin', 'admin'),
+    authorizeRoles('admin'),
     validateBody(ledgerEntrySchema),
     transactionController.ledgerEntry
   );
 
   r.get('/loans', groupScopeMiddleware, validateQuery(loanListQuerySchema), loanController.list);
   r.get('/loans/eligibility', groupScopeMiddleware, authorizeRoles('user'), loanController.eligibility);
-  r.post('/loans/request', authorizeRoles('user'), validateBody(loanRequestSchema), loanController.request);
+  r.post('/loans/request', groupScopeMiddleware, loanController.request);
   r.post(
     '/loans/:id/vote',
     groupScopeMiddleware,
-    authorizeRoles('user'),
     validateBody(loanVoteSchema),
     loanController.vote
   );
@@ -153,9 +169,17 @@ export default function createV1Router(limiters) {
     validateBody(loanRejectBodySchema),
     loanController.reject
   );
+  r.post(
+    '/loans/repay',
+    groupScopeMiddleware,
+    authorizeRoles('admin'),
+    validateBody(loanRepaySchema),
+    loanController.repay
+  );
 
   r.get('/notifications/unread-count', notificationController.unreadCount);
   r.get('/notifications', notificationController.list);
+  r.post('/notifications/register-token', notificationController.registerToken);
   r.post('/notifications/read-all', notificationController.markAllRead);
   r.patch('/notifications/:id/read', notificationController.markRead);
   r.patch('/notifications/:id/unread', notificationController.markUnread);

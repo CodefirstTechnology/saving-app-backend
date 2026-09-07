@@ -14,13 +14,18 @@ import { ROLES, normalizeRoleString } from '../constants/roles.js';
 import { normalizeMobile, isValidMobileDigits } from '../utils/mobile.js';
 
 function serializeUserPublic(user) {
+  const permId = user.user_id || user.member_id || user.id;
   return {
     id: user.id,
+    userId: permId,
+    user_id: permId,
     name: user.full_name,
     mobile_number: user.mobile_number,
     role: normalizeRoleString(user.role),
+    accountStatus: user.account_status || 'ACTIVE',
     groupId: user.group_id,
-    memberId: user.member_id,
+    memberId: permId,
+    member_id: permId,
   };
 }
 
@@ -112,6 +117,7 @@ const authService = {
       town,
       pincode,
       password,
+      role,
     },
     _ctx = {}
   ) {
@@ -125,11 +131,16 @@ const authService = {
 
     const emailNorm = email.trim().toLowerCase();
     const existingEmail = await userRepository.findByEmail(emailNorm);
-    if (existingEmail) throw new AppError(409, 'Email already registered');
-    if (await userRepository.hasAnyUserWithMobile(m)) throw new AppError(409, 'Mobile number already registered');
+    if (existingEmail) {
+      throw new AppError(409, 'हा ईमेल आयडी आधीच नोंदणीकृत आहे (This email address is already registered)');
+    }
+    if (await userRepository.hasAnyUserWithMobile(m)) {
+      throw new AppError(409, 'हा मोबाईल नंबर आधीच नोंदणीकृत आहे (This mobile phone number is already registered)');
+    }
 
     const full_name = `${first_name.trim()} ${last_name.trim()}`.trim();
     const pin = pincode.trim();
+    const userRole = role === 'user' ? ROLES.USER : ROLES.ADMIN;
 
     try {
       await withMongoTransaction(async (session) => {
@@ -139,7 +150,7 @@ const authService = {
             mobile_number: m,
             password_hash: await hashPassword(password),
             full_name,
-            role: ROLES.ADMIN,
+            role: userRole,
             group_id: null,
             member_id: null,
             city: city.trim(),
@@ -152,11 +163,11 @@ const authService = {
       });
       return {
         message:
-          'Registration successful. Sign in with your phone number and password, then create your first Bachat Gat from the app menu.',
+          'Registration successful. Sign in with your phone number and password.',
       };
     } catch (e) {
       if (e?.code === 11000 || e?.codeName === 'DuplicateKey') {
-        throw new AppError(409, 'Email or mobile number already registered');
+        throw new AppError(409, 'हा मोबाईल नंबर किंवा ईमेल आधीच नोंदणीकृत आहे (Mobile number or email already registered)');
       }
       throw e;
     }
@@ -196,6 +207,9 @@ const authService = {
       }
     }
     if (!user) throw new AppError(401, 'Invalid credentials');
+    if (user.account_status && user.account_status !== 'ACTIVE') {
+      throw new AppError(403, 'Your account is currently suspended or disabled');
+    }
     return buildTokenResponse(user, device_id);
   },
 
@@ -227,6 +241,45 @@ const authService = {
     await refreshTokenRepository.revokeAllForUser(userId);
     return { ok: true };
   },
+
+  async googleLogin({ idToken, email, name, photo, device_id, role } = {}) {
+    const userEmail = (email || 'user.google@gmail.com').trim().toLowerCase();
+    let user = await userRepository.findByEmail(userEmail);
+    const assignedRole = role === 'admin' ? ROLES.ADMIN : ROLES.USER;
+
+    if (!user) {
+      user = await userRepository.create({
+        email: userEmail,
+        mobile_number: `9${Math.floor(100000000 + Math.random() * 900000000)}`,
+        password_hash: await hashPassword(randomUUID()),
+        full_name: name || 'Google User',
+        role: assignedRole,
+        account_status: 'ACTIVE',
+        group_id: null,
+        member_id: null,
+      });
+    } else {
+      // If user exists, update their name or role if role was specified
+      const updates = {};
+      if (name && name !== user.full_name) {
+        updates.full_name = name;
+      }
+      if (role && user.role !== assignedRole && user.role !== ROLES.SUPER_ADMIN) {
+        updates.role = assignedRole;
+      }
+      if (Object.keys(updates).length > 0) {
+        await User.updateOne({ _id: user.id }, { $set: updates });
+        user = await userRepository.findById(user.id);
+      }
+    }
+
+    if (user.account_status && user.account_status !== 'ACTIVE') {
+      throw new AppError(403, 'Your account is currently suspended or disabled');
+    }
+
+    return buildTokenResponse(user, device_id);
+  },
 };
+
 
 export default authService;

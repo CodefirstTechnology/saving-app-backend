@@ -36,6 +36,16 @@ export async function create(req, res, next) {
   }
 }
 
+export async function addById(req, res, next) {
+  try {
+    const userId = req.body.uniqueMemberId || req.body.userId;
+    const data = await memberService.addByUserId(req.user, userId, req.groupScopeId);
+    res.status(201).json({ success: true, data });
+  } catch (e) {
+    next(e);
+  }
+}
+
 export async function update(req, res, next) {
   try {
     const data = await memberService.update(req.user, req.params.id, req.body, req.groupScopeId);

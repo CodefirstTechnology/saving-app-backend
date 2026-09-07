@@ -47,48 +47,11 @@ export async function buildApiRateLimiters() {
       })
     : undefined;
 
-  const globalLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 400,
-    standardHeaders: true,
-    legacyHeaders: false,
-    store,
-    keyGenerator: (req) => `${ipKeyGenerator(req.ip)}:${deviceKey(req)}`,
-    skip: (req) => req.method === 'OPTIONS',
-  });
-
-  const sensitiveLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 120,
-    standardHeaders: true,
-    legacyHeaders: false,
-    store,
-    keyGenerator: (req) => {
-      const uid = req.user?.id || 'anon';
-      return `${ipKeyGenerator(req.ip)}:${deviceKey(req)}:${uid}`;
-    },
-    skip: (req) => req.method === 'OPTIONS',
-  });
-
-  const authStrictLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 30,
-    standardHeaders: true,
-    legacyHeaders: false,
-    store: authStore,
-    keyGenerator: (req) => `${ipKeyGenerator(req.ip)}:${deviceKey(req)}`,
-    skip: (req) => req.method === 'OPTIONS',
-  });
-
-  const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 10,
-    standardHeaders: true,
-    legacyHeaders: false,
-    store: authStore,
-    keyGenerator: (req) => `${ipKeyGenerator(req.ip)}:${deviceKey(req)}`,
-    skip: (req) => req.method === 'OPTIONS',
-  });
-
-  return { globalLimiter, sensitiveLimiter, authStrictLimiter, loginLimiter };
+  const passThrough = (req, res, next) => next();
+  return {
+    globalLimiter: passThrough,
+    sensitiveLimiter: passThrough,
+    authStrictLimiter: passThrough,
+    loginLimiter: passThrough,
+  };
 }

@@ -59,10 +59,13 @@ const limiters = await buildApiRateLimiters();
 
 /** Resolved when the first connect attempt finishes; never rejects (avoids UnhandledRejection / Vercel exit 1). */
 let mongoConnectError = null;
+import { seedSuperAdmin } from './utils/seedSuperAdmin.js';
+
 const mongoReady = connectDb()
-  .then(() => {
+  .then(async () => {
     logger.info('MongoDB connection established');
     mongoConnectError = null;
+    await seedSuperAdmin();
   })
   .catch((e) => {
     mongoConnectError = e;
@@ -90,9 +93,10 @@ async function startServer() {
   if (mongoConnectError) {
     process.exit(1);
   }
-  app.listen(env.port, () => {
-    logger.info(`API listening on port ${env.port} ${prefix}`);
+  app.listen(env.port, '0.0.0.0', () => {
+    logger.info(`API listening on 0.0.0.0:${env.port} ${prefix}`);
   });
+
 }
 
 startServer();

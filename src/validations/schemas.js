@@ -44,6 +44,7 @@ export const registerAdminSchema = z.object({
   town: z.string().trim().min(1).max(255),
   pincode: z.string().regex(/^\d{6}$/, 'Pincode must be 6 digits'),
   password: z.string().min(8).max(128),
+  role: z.enum(['admin', 'user']).optional(),
   device_id: z.string().max(128).optional(),
 });
 
@@ -54,6 +55,15 @@ export const refreshTokenSchema = z.object({
 
 export const logoutSchema = z.object({
   refreshToken: z.string().min(1).optional(),
+});
+
+export const googleAuthSchema = z.object({
+  idToken: z.string().optional(),
+  email: z.string().email().optional(),
+  name: z.string().optional(),
+  photo: z.string().optional(),
+  device_id: z.string().max(128).optional(),
+  role: z.string().optional(),
 });
 
 export const createAdminSchema = z.object({
@@ -94,10 +104,18 @@ export const createGroupSchema = z
     }
   });
 
+export const updateGroupSchema = z.object({
+  loanInterestRateMonthlyPercent: z.coerce.number().gt(0).lte(100).optional(),
+  nameMarathi: z.string().trim().min(1).max(255).optional(),
+  nameEnglish: z.string().trim().min(1).max(255).optional(),
+  maxMembers: z.coerce.number().int().min(2).max(500).optional(),
+  annualSavingsGoal: z.coerce.number().gt(0).optional(),
+});
+
 export const translateSchema = z.object({
-  text: z.string().max(2000),
-  from: z.enum(['en', 'mr']),
-  to: z.enum(['en', 'mr']),
+  text: z.string().max(5000).optional().default(''),
+  from: z.string().max(10).optional().default('en'),
+  to: z.string().max(10).optional().default('mr'),
 });
 
 export const memberCreateSchema = z

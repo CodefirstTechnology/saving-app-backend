@@ -48,3 +48,13 @@ export async function logout(req, res, next) {
   }
 }
 
+export async function googleLogin(req, res, next) {
+  try {
+    const result = await authService.googleLogin(req.body);
+    res.json({ success: true, data: result });
+  } catch (e) {
+    next(e);
+  }
+}
+
+

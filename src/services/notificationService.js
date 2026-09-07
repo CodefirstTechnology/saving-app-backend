@@ -2,17 +2,59 @@ import notificationRepository from '../repositories/notificationRepository.js';
 import memberRepository from '../repositories/memberRepository.js';
 import userRepository from '../repositories/userRepository.js';
 
+async function dispatchPushNotifications(userIds, { title, body, payload }) {
+  try {
+    const tokens = await userRepository.getPushTokensByUserIds(userIds);
+    if (!tokens || tokens.length === 0) return;
+
+    // Filter valid Expo Push Tokens if any
+    const expoTokens = tokens.filter((t) => typeof t === 'string' && (t.startsWith('ExponentPushToken[') || t.startsWith('ExpoPushToken[')));
+    if (expoTokens.length > 0) {
+      const messages = expoTokens.map((token) => ({
+        to: token,
+        sound: 'default',
+        title,
+        body,
+        data: payload || {},
+      }));
+
+      // Non-blocking fetch to Expo Push Service
+      fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(messages),
+      }).catch((err) => {
+        console.warn('[Push Notification] Expo Push send error:', err?.message || err);
+      });
+    }
+  } catch (err) {
+    console.warn('[Push Notification] Error dispatching push:', err?.message || err);
+  }
+}
+
 async function createMany(userIds, { category, title, body, payload }) {
   const unique = [...new Set(userIds.filter(Boolean))];
   for (const user_id of unique) {
     await notificationRepository.create({ user_id, category, title, body, payload: payload || null });
   }
+  if (unique.length > 0) {
+    await dispatchPushNotifications(unique, { title, body, payload });
+  }
 }
 
 const notificationService = {
+  async registerPushToken(userId, token) {
+    if (!userId || !token) return;
+    await userRepository.addPushToken(userId, token);
+  },
+
   async notifyGroupMembers(groupId, { category, title, body, payload, excludeUserIds = [] } = {}) {
     const memberUserIds = await memberRepository.listActiveUserIdsInGroup(groupId);
-    const exclude = new Set(excludeUserIds);
+    const exclude = new Set(excludeUserIds.filter(Boolean));
     const targets = memberUserIds.filter((id) => !exclude.has(id));
     await createMany(targets, { category, title, body, payload });
   },
@@ -23,15 +65,20 @@ const notificationService = {
   },
 
   async notifyAllUsersInGroup(groupId, { category, title, body, payload, excludeUserIds = [] } = {}) {
-    const ids = await userRepository.listAllUserIdsInGroup(groupId);
+    const [userIds, memberUserIds] = await Promise.all([
+      userRepository.listAllUserIdsInGroup(groupId),
+      memberRepository.listActiveUserIdsInGroup(groupId),
+    ]);
+    const allIds = [...new Set([...userIds, ...memberUserIds])];
     const exclude = new Set(excludeUserIds.filter(Boolean));
-    const targets = ids.filter((id) => !exclude.has(id));
+    const targets = allIds.filter((id) => !exclude.has(id));
     await createMany(targets, { category, title, body, payload });
   },
 
   async notifyUser(userId, { category, title, body, payload } = {}) {
     if (!userId) return;
     await notificationRepository.create({ user_id: userId, category, title, body, payload: payload || null });
+    await dispatchPushNotifications([userId], { title, body, payload });
   },
 
   async listForUser(userId, query) {

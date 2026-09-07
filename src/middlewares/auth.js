@@ -15,10 +15,18 @@ export async function authenticate(req, res, next) {
     const decoded = verifyToken(token);
     const user = await userRepository.findById(decoded.sub);
     if (!user) throw new AppError(401, 'Invalid token');
+
+    if (user.account_status && user.account_status !== 'ACTIVE') {
+      throw new AppError(403, 'Your account is currently suspended or disabled');
+    }
+
     const uid = normalizeEntityId(user.id) || user.id;
     req.user = {
       id: uid,
+      userId: user.user_id || uid,
+      firebaseUid: user.firebase_uid || null,
       role: normalizeRoleString(user.role),
+      accountStatus: user.account_status || 'ACTIVE',
       groupId: user.group_id,
       memberId: user.member_id,
       name: user.full_name,

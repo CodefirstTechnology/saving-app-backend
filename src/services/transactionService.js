@@ -1,6 +1,7 @@
 import { withMongoTransaction } from '../config/database.js';
 import transactionRepository from '../repositories/transactionRepository.js';
 import memberRepository from '../repositories/memberRepository.js';
+import notificationService from './notificationService.js';
 import { AppError } from '../middlewares/errorHandler.js';
 import { Member } from '../models/index.js';
 import { ROLES, canManageGroup } from '../constants/roles.js';
@@ -110,6 +111,27 @@ const transactionService = {
       descriptionEnglish: body.descriptionEnglish,
     });
     const updated = await memberRepository.findById(member.id, groupId);
+
+    const memberName = member.name_english || member.name_marathi || 'Member';
+    const memberNameMarathi = member.name_marathi || member.name_english || 'सभासद';
+
+    // Broadcast deposit notification to all group members
+    await notificationService.notifyAllUsersInGroup(groupId, {
+      category: 'savings_deposit',
+      title: 'बचत जमा / Savings Deposited',
+      body: `${memberName} deposited ₹${amount} (${memberNameMarathi} यांनी ₹${amount} बचत जमा केली).`,
+      payload: { memberId: member.id, amount, type: 'savings_deposit' },
+    });
+
+    if (member.user_id) {
+      await notificationService.notifyUser(member.user_id, {
+        category: 'savings_credit',
+        title: 'बचत नोंद / Savings Recorded',
+        body: `Admin recorded ₹${amount} savings deposit to your account.`,
+        payload: { memberId: member.id, amount },
+      });
+    }
+
     return { member: { id: updated.id, savingsBalance: String(updated.savings_balance) } };
   },
 
@@ -152,6 +174,21 @@ const transactionService = {
         );
       }
     });
+
+    if (body.memberId && body.category === 'savings' && body.entryType === 'credit') {
+      const member = await memberRepository.findById(body.memberId, groupId);
+      if (member) {
+        const memberName = member.name_english || member.name_marathi || 'Member';
+        const memberNameMarathi = member.name_marathi || member.name_english || 'सभासद';
+        await notificationService.notifyAllUsersInGroup(groupId, {
+          category: 'savings_deposit',
+          title: 'बचत जमा / Savings Deposited',
+          body: `${memberName} deposited ₹${amount} (${memberNameMarathi} यांनी ₹${amount} बचत जमा केली).`,
+          payload: { memberId: member.id, amount, type: 'savings_deposit' },
+        });
+      }
+    }
+
     return { ok: true };
   },
 

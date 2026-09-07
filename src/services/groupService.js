@@ -24,6 +24,7 @@ function serializeGroup(g) {
     maxMembers: attr(g, 'max_members'),
     contributionCycleType: attr(g, 'contribution_cycle_type'),
     contributionCycleDays: cycleDays != null ? Number(cycleDays) : null,
+    annualSavingsGoal: Number(attr(g, 'annual_savings_goal') ?? 200000),
     createdAt: attr(g, 'created_at'),
     updatedAt: attr(g, 'updated_at'),
   };
@@ -119,6 +120,27 @@ const groupService = {
     }
     const g = await groupRepository.create(payload);
     return serializeMyGroup(g, actor.id);
+  },
+
+  async updateGroup(actor, groupId, body) {
+    const hasAccess = await this.adminHasGroupAccess(actor.id, groupId);
+    if (!hasAccess && actor.role !== ROLES.SUPER_ADMIN) {
+      throw new AppError(403, 'You do not have permission to update this group');
+    }
+    const updateData = {};
+    if (body.loanInterestRateMonthlyPercent !== undefined) {
+      updateData.loan_interest_rate_monthly_percent = Number(body.loanInterestRateMonthlyPercent);
+    }
+    if (body.nameMarathi !== undefined) updateData.name_marathi = body.nameMarathi;
+    if (body.nameEnglish !== undefined) updateData.name_english = body.nameEnglish;
+    if (body.maxMembers !== undefined) updateData.max_members = Number(body.maxMembers);
+    if (body.annualSavingsGoal !== undefined) updateData.annual_savings_goal = Number(body.annualSavingsGoal);
+
+    const updated = await groupRepository.update(groupId, updateData);
+    if (!updated) {
+      throw new AppError(404, 'Group not found');
+    }
+    return serializeGroup(updated);
   },
 
   /** @deprecated Prefer POST /admin/create-admin with `group_id` in body */

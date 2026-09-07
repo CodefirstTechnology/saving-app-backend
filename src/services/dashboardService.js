@@ -41,7 +41,19 @@ const dashboardService = {
       };
     }
 
-    if (!groupId) throw new AppError(400, 'groupId missing');
+    if (!groupId) {
+      return {
+        view: user.role === ROLES.SUPER_ADMIN ? 'group_scoped' : 'admin',
+        group: null,
+        totalMembers: 0,
+        totalSavings: '0',
+        outstandingLoans: '0',
+        savingsGoalAmount: DEFAULT_GOAL,
+        progressBloomPercent: 0,
+        recentTransactions: [],
+        groupFund: { totalBalance: 0, activeLoans: 0 },
+      };
+    }
 
     if (user.role === ROLES.USER && user.memberId) {
       const m = await memberRepository.findById(user.memberId, groupId);
@@ -54,8 +66,9 @@ const dashboardService = {
           memberId: user.memberId,
         }),
       ]);
+      const targetGoal = group?.annual_savings_goal || DEFAULT_GOAL;
       const totalSavings = Number(m.savings_balance);
-      const goalPercent = Math.min(100, Math.round((totalSavings / DEFAULT_GOAL) * 100));
+      const goalPercent = Math.min(100, Math.round((totalSavings / targetGoal) * 100));
       const groupFund = await getGroupFundSnapshot(groupId);
       return {
         view: 'member',
@@ -63,7 +76,7 @@ const dashboardService = {
         totalMembers: 1,
         totalSavings: String(totalSavings),
         outstandingLoans: '0',
-        savingsGoalAmount: DEFAULT_GOAL,
+        savingsGoalAmount: targetGoal,
         progressBloomPercent: goalPercent,
         recentTransactions: recent.rows.map(mapTx),
         groupFund,
@@ -78,9 +91,10 @@ const dashboardService = {
       transactionRepository.listByGroup(groupId, { offset: 0, limit: 8 }),
     ]);
 
+    const targetGoal = group?.annual_savings_goal || DEFAULT_GOAL;
     const totalSavings = Number(totalSavingsStr);
     const outstandingLoans = Number(outstandingStr);
-    const goalPercent = Math.min(100, Math.round((totalSavings / DEFAULT_GOAL) * 100));
+    const goalPercent = Math.min(100, Math.round((totalSavings / targetGoal) * 100));
 
     const groupFund = await getGroupFundSnapshot(groupId);
     return {
@@ -89,7 +103,7 @@ const dashboardService = {
       totalMembers,
       totalSavings: String(totalSavings),
       outstandingLoans: String(outstandingLoans),
-      savingsGoalAmount: DEFAULT_GOAL,
+      savingsGoalAmount: targetGoal,
       progressBloomPercent: goalPercent,
       recentTransactions: recent.rows.map(mapTx),
       groupFund,

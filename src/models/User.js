@@ -7,6 +7,8 @@ const { Schema } = mongoose;
 const userSchema = new Schema(
   {
     _id: { type: String, default: () => randomUUID() },
+    user_id: { type: String, unique: true, sparse: true, trim: true },
+    firebase_uid: { type: String, default: null, trim: true, index: true },
     email: { type: String, lowercase: true, trim: true, default: null },
     mobile_number: { type: String, trim: true, default: null },
     password_hash: { type: String, required: true },
@@ -16,6 +18,12 @@ const userSchema = new Schema(
       default: 'user',
       enum: ROLE_VALUES,
     },
+    account_status: {
+      type: String,
+      required: true,
+      default: 'ACTIVE',
+      enum: ['ACTIVE', 'SUSPENDED', 'DISABLED'],
+    },
     group_id: { type: String, default: null },
     member_id: { type: String, default: null },
     full_name: { type: String, default: null },
@@ -23,6 +31,7 @@ const userSchema = new Schema(
     state: { type: String, default: null },
     town: { type: String, default: null },
     pincode: { type: String, default: null },
+    push_tokens: [{ type: String, trim: true }],
   },
   {
     collection: 'users',
@@ -31,7 +40,10 @@ const userSchema = new Schema(
 );
 
 userSchema.index({ group_id: 1 });
-userSchema.index({ role: 1 });
+userSchema.index(
+  { role: 1 },
+  { unique: true, partialFilterExpression: { role: 'super_admin' } }
+);
 userSchema.index(
   { email: 1 },
   { unique: true, partialFilterExpression: { email: { $type: 'string', $gt: '' } } }

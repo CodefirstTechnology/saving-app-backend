@@ -157,22 +157,22 @@ const collectionPaymentService = {
     });
 
     const refreshed = await collectionPaymentRepository.findById(paymentId, scopedGroupId);
-    const payer = await memberRepository.findById(payment.member_id, scopedGroupId);
-    const payerUserId = payer?.user_id;
+    const payerName = payer ? (payer.name_english || payer.name_marathi || 'Member') : 'Member';
+    const payerNameMarathi = payer ? (payer.name_marathi || payer.name_english || 'सभासद') : 'सभासद';
 
     if (payerUserId) {
       await notificationService.notifyUser(payerUserId, {
         category: 'payment_confirmed',
-        title: 'Payment confirmed',
-        body: `Your payment of ₹${payment.amount} was confirmed by the admin.`,
+        title: 'बचत जमा मंजूर / Payment Confirmed',
+        body: `Your payment of ₹${payment.amount} was confirmed by the admin (आपली ₹${payment.amount} ची बचत जमा मंजूर झाली आहे).`,
         payload: { collectionPaymentId: paymentId },
       });
     }
 
     await notificationService.notifyAllUsersInGroup(scopedGroupId, {
       category: 'payment_confirmed_broadcast',
-      title: 'Payment confirmed',
-      body: `A member payment of ₹${payment.amount} was confirmed.`,
+      title: 'बचत जमा / Savings Deposited',
+      body: `${payerName} deposited ₹${payment.amount} (${payerNameMarathi} यांनी ₹${payment.amount} बचत जमा केली).`,
       payload: { collectionPaymentId: paymentId },
       excludeUserIds: payerUserId ? [payerUserId] : [],
     });
