@@ -24,6 +24,8 @@ const collectionPaymentSchema = new Schema(
     rejected_at: { type: Date, default: null },
     rejected_by_user_id: { type: String, default: null },
     linked_transaction_id: { type: String, default: null },
+    utr_number: { type: String, default: null },
+    receipt_image_url: { type: String, default: null },
   },
   {
     collection: 'collection_payments',

@@ -21,6 +21,10 @@ const env = {
   apiRequestSigningSecret: process.env.API_REQUEST_SIGNING_SECRET || '',
   /** e.g. redis://redis:6379 — if unset, rate limiting uses in-memory store */
   redisUrl: process.env.REDIS_URL || '',
+  AWS_REGION: process.env.AWS_REGION || 'ap-south-1',
+  AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID || '',
+  AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY || '',
+  AWS_S3_BUCKET_NAME: process.env.AWS_S3_BUCKET_NAME || '',
 };
 
 export function validateEnv() {

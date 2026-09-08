@@ -619,10 +619,12 @@ const loanService = {
           category: 'loan_repay',
           amount,
           description_marathi: null,
-          description_english: 'Loan repayment',
+          description_english: 'Loan repayment / EMI',
           payment_mode: body.paymentMode || 'cash',
           occurred_at: body.occurredAt || formatISO(new Date(), 'date'),
           created_by_user_id: user.id,
+          utr_number: body.utrNumber || null,
+          receipt_image_url: body.receiptImageUrl || null,
         },
         { session }
       );

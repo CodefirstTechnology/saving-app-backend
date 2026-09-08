@@ -24,6 +24,8 @@ const transactionSchema = new Schema(
     },
     occurred_at: { type: String, required: true },
     created_by_user_id: { type: String, default: null },
+    utr_number: { type: String, default: null },
+    receipt_image_url: { type: String, default: null },
   },
   {
     collection: 'transactions',

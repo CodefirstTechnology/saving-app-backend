@@ -14,6 +14,8 @@ import * as collectionController from '../../controllers/collectionController.js
 import * as dashboardController from '../../controllers/dashboardController.js';
 import { depositProofUpload } from '../../middlewares/depositProofUpload.js';
 import * as translationController from '../../controllers/translationController.js';
+import * as uploadController from '../../controllers/uploadController.js';
+import uploadMiddleware from '../../middlewares/uploadMiddleware.js';
 import {
   bootstrapSchema,
   loginSchema,
@@ -69,8 +71,11 @@ export default function createV1Router(limiters) {
 
   r.post('/translate', validateBody(translateSchema), translationController.translateText);
 
+
   r.use(authenticate);
   r.use(sensitiveLimiter);
+
+  r.post('/upload/screenshot', uploadMiddleware.single('screenshot'), uploadController.uploadScreenshotHandler);
 
   r.get('/admin/metrics', authorizeRoles('super_admin'), adminController.getMetrics);
   r.post(

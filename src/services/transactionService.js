@@ -28,6 +28,8 @@ async function applySavingsCredit(opts, session = undefined) {
     payment_mode: opts.paymentMode || 'cash',
     occurred_at: opts.occurredAt,
     created_by_user_id: opts.createdByUserId,
+    utr_number: opts.utrNumber ?? null,
+    receipt_image_url: opts.receiptImageUrl ?? null,
   };
 
   const run = async (s) => {
@@ -109,6 +111,8 @@ const transactionService = {
       createdByUserId: user.id,
       descriptionMarathi: body.descriptionMarathi,
       descriptionEnglish: body.descriptionEnglish,
+      utrNumber: body.utrNumber,
+      receiptImageUrl: body.receiptImageUrl,
     });
     const updated = await memberRepository.findById(member.id, groupId);
 
@@ -155,6 +159,8 @@ const transactionService = {
           payment_mode: body.paymentMode || null,
           occurred_at: body.occurredAt,
           created_by_user_id: user.id,
+          utr_number: body.utrNumber || null,
+          receipt_image_url: body.receiptImageUrl || null,
         },
         { session }
       );
@@ -222,6 +228,8 @@ function serializeTx(tx) {
     descriptionEnglish: tx.description_english,
     paymentMode: tx.payment_mode,
     occurredAt: tx.occurred_at,
+    utrNumber: tx.utr_number || null,
+    receiptImageUrl: tx.receipt_image_url || null,
     member: tx.member
       ? {
           id: tx.member.id ?? tx.member._id,

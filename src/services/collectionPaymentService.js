@@ -30,6 +30,8 @@ function serializePayment(p) {
     amount: String(p.amount),
     paymentMethod: p.payment_method,
     transactionReference: p.transaction_reference,
+    utrNumber: p.utr_number || p.transaction_reference || null,
+    receiptImageUrl: p.receipt_image_url || null,
     paidAt: p.paid_at,
     status: p.status,
     digitallyTraceable: Boolean(p.digitally_traceable),
@@ -64,8 +66,10 @@ const collectionPaymentService = {
     }
 
     const ref = body.transactionReference != null ? String(body.transactionReference).trim() : '';
+    const utr = body.utrNumber != null ? String(body.utrNumber).trim() : ref;
+
     if (method === 'upi' || method === 'bank_transfer') {
-      if (ref.length < 3) throw new AppError(400, 'Transaction reference is required for UPI and bank transfer');
+      if (ref.length < 3 && utr.length < 3) throw new AppError(400, 'Transaction reference / UTR number is required for UPI and bank transfer');
     }
 
     const paidAt = body.paidAt ? new Date(body.paidAt) : new Date();
@@ -80,7 +84,9 @@ const collectionPaymentService = {
       submitted_by_user_id: user.id,
       amount,
       payment_method: method,
-      transaction_reference: digitallyTraceable ? ref : ref || null,
+      transaction_reference: digitallyTraceable ? ref || utr : ref || utr || null,
+      utr_number: utr || null,
+      receipt_image_url: body.receiptImageUrl || null,
       paid_at: paidAt,
       status: 'initiated',
       digitally_traceable: digitallyTraceable,
@@ -139,6 +145,8 @@ const collectionPaymentService = {
           occurredAt,
           createdByUserId: user.id,
           descriptionEnglish: `Collection payment (${payment.payment_method})`,
+          utrNumber: payment.utr_number || payment.transaction_reference,
+          receiptImageUrl: payment.receipt_image_url,
         },
         session
       );

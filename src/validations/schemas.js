@@ -176,6 +176,8 @@ export const savingsEntrySchema = z.object({
   occurredAt: z.string(),
   descriptionMarathi: z.string().optional(),
   descriptionEnglish: z.string().optional(),
+  utrNumber: z.string().max(255).optional().nullable(),
+  receiptImageUrl: z.string().max(2000).optional().nullable(),
 });
 
 export const ledgerEntrySchema = z.object({
@@ -188,6 +190,8 @@ export const ledgerEntrySchema = z.object({
   occurredAt: z.string(),
   descriptionMarathi: z.string().optional(),
   descriptionEnglish: z.string().optional(),
+  utrNumber: z.string().max(255).optional().nullable(),
+  receiptImageUrl: z.string().max(2000).optional().nullable(),
 });
 
 export const loanRequestSchema = z
@@ -258,6 +262,8 @@ export const loanRepaySchema = z.object({
   amount: z.number().positive(),
   paymentMode: z.enum(['cash', 'bank']).optional(),
   occurredAt: z.string().optional(),
+  utrNumber: z.string().max(255).optional().nullable(),
+  receiptImageUrl: z.string().max(2000).optional().nullable(),
 });
 
 export const loanListQuerySchema = z.object({
@@ -285,14 +291,16 @@ export const collectionPaymentSubmitSchema = z
     paymentMethod: z.enum(['cash', 'upi', 'bank_transfer']),
     transactionReference: z.string().max(255).optional().nullable(),
     paidAt: z.string().max(40).optional(),
+    utrNumber: z.string().max(255).optional().nullable(),
+    receiptImageUrl: z.string().max(2000).optional().nullable(),
   })
   .superRefine((data, ctx) => {
     if (data.paymentMethod === 'cash') return;
-    const ref = String(data.transactionReference ?? '').trim();
+    const ref = String(data.transactionReference ?? data.utrNumber ?? '').trim();
     if (ref.length < 3) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Transaction reference is required for UPI and bank transfer',
+        message: 'Transaction reference / UTR number is required for UPI and bank transfer',
         path: ['transactionReference'],
       });
     }
